@@ -1,7 +1,28 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadConfig } from '../src/config';
 import { createAppFromConfigPath } from '../src/index';
 
-export const configPath = process.env.TEST_CONFIG_PATH ?? 'config.json5';
+function createDefaultTestConfigPath(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'local-router-test-setup-'));
+  const path = join(dir, 'config.json5');
+  writeFileSync(
+    path,
+    JSON.stringify(
+      {
+        providers: {},
+        routes: {},
+      },
+      null,
+      2
+    ),
+    'utf-8'
+  );
+  return path;
+}
+
+export const configPath = process.env.TEST_CONFIG_PATH ?? createDefaultTestConfigPath();
 export const config = loadConfig(configPath);
 export const app = createAppFromConfigPath(configPath);
 

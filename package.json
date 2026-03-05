@@ -1,6 +1,6 @@
 {
   "name": "@lakphy/local-router",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "packageManager": "bun@1.2.0",
   "workspaces": [
     "web"
