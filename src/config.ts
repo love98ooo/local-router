@@ -13,6 +13,7 @@ const DEFAULT_CONFIG = `{
     //   type: "openai-completions",
     //   base: "https://api.openai.com/v1",
     //   apiKey: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    //   proxy: "http://127.0.0.1:7890",
     //   models: {
     //     "gpt-4o": { "image-input": true },
     //     "gpt-4o-mini": {},
@@ -24,6 +25,7 @@ const DEFAULT_CONFIG = `{
     //   type: "anthropic-messages",
     //   base: "https://api.anthropic.com",
     //   apiKey: "sk-ant-xxxxx",
+    //   proxy: "http://127.0.0.1:7890",
     //   models: {
     //     "claude-sonnet-4-5": { "image-input": true, reasoning: true },
     //     "claude-haiku-4-5": {},
@@ -77,6 +79,7 @@ export interface ProviderConfig {
   type: ProviderType;
   base: string;
   apiKey: string;
+  proxy?: string;
   models: Record<string, ModelCapabilities>;
 }
 

@@ -86,6 +86,7 @@ export function createModelRoutingHandler(options: ModelRoutingOptions) {
     return proxyRequest(c, {
       targetUrl,
       apiKey: provider.apiKey,
+      proxy: provider.proxy,
       authType,
       body,
       logMeta,

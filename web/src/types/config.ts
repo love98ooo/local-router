@@ -14,6 +14,7 @@ export interface ProviderConfig {
   type: ProviderType;
   base: string;
   apiKey: string;
+  proxy?: string;
   models: Record<string, ModelCapabilities>;
 }
 

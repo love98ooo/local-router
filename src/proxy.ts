@@ -62,6 +62,7 @@ function buildResponseHeaders(upstream: Headers): Record<string, string> {
 export interface ProxyRequestOptions {
   targetUrl: string;
   apiKey: string;
+  proxy?: string;
   authType: AuthType;
   body: string;
   logMeta: LogMeta;
@@ -146,12 +147,15 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
   const requestBody =
     shouldLog && logger?.bodyPolicy !== 'off' ? JSON.parse(options.body) : undefined;
 
+  const proxy = options.proxy?.trim() ? options.proxy.trim() : undefined;
+
   let upstreamRes: Response;
   try {
     upstreamRes = await fetch(options.targetUrl, {
       method: c.req.method,
       headers,
       body: options.body,
+      ...(proxy ? { proxy } : {}),
       // 显式开启自动解压，避免运行时默认值差异。
       decompress: true,
     });

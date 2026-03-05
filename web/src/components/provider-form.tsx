@@ -87,6 +87,19 @@ export function ProviderForm({ name, config, isNew, onChange }: ProviderFormProp
       </div>
 
       <div className="space-y-1.5">
+        <Label htmlFor="provider-proxy">Proxy URL（可选）</Label>
+        <Input
+          id="provider-proxy"
+          value={config.proxy ?? ''}
+          onChange={(e) => onChange({ ...config, proxy: e.target.value })}
+          placeholder="http://127.0.0.1:7890"
+        />
+        <p className="text-xs text-muted-foreground">
+          留空表示直连上游；仅此 provider 生效，不读取环境变量代理。
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
         <Label htmlFor="provider-apikey">API Key</Label>
         <div className="relative">
           <Input

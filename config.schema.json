@@ -140,6 +140,21 @@
           "minLength": 1,
           "description": "访问上游服务的密钥。建议通过环境变量注入后再生成配置文件，避免在仓库中明文保存。"
         },
+        "proxy": {
+          "description": "可选。该 provider 专属代理地址。配置后仅此 provider 的上游请求会通过该代理发送；留空或省略表示直连上游。",
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uri",
+              "minLength": 1
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ],
+          "examples": ["http://127.0.0.1:7890", "https://user:pass@proxy.example.com:8443", ""]
+        },
         "models": {
           "type": "object",
           "minProperties": 1,

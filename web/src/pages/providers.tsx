@@ -34,6 +34,7 @@ const DEFAULT_PROVIDER: ProviderConfig = {
   type: 'openai-completions',
   base: '',
   apiKey: '',
+  proxy: '',
   models: {},
 };
 

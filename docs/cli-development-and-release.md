@@ -93,6 +93,21 @@ bun run src/cli.ts stop
 - `status --json` 是否返回 `uptimeSeconds` 与 `checkedAt`
 - `stop` 后 pid/status 文件是否清理
 
+### 2.4 Provider 级代理功能测试（新增）
+
+当改动涉及 `providers.*.proxy` 时，建议至少执行：
+
+```bash
+bun test tests/integration/provider-proxy.test.ts
+```
+
+验证要点：
+
+- 配置了 `providers.<name>.proxy` 的 provider，转发时应携带该代理。
+- `proxy` 为空字符串或缺省时，转发应直连（不传代理参数）。
+- 不同 provider 的代理配置互不影响。
+- 当前实现仅读取配置文件中的 `providers.*.proxy`，不读取 `HTTP_PROXY/HTTPS_PROXY`。
+
 ## 3. 测试完成后如何构建
 
 ### 3.1 构建 API + CLI（最小发布必需）

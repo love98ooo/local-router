@@ -51,6 +51,7 @@ local-router init
       type: "openai-completions",
       base: "https://api.openai.com/v1",
       apiKey: "sk-xxxx",
+      proxy: "http://127.0.0.1:7890", // 可选：仅该 provider 走代理
       models: {
         "gpt-4o-mini": {}
       }
@@ -121,12 +122,49 @@ curl -X POST "http://127.0.0.1:4099/openai-completions/v1/chat/completions" \
 ## 配置规则（必须知道）
 
 - `providers`：定义上游服务（类型、地址、密钥、模型）
+- `providers.*.proxy`：可选，provider 级代理 URL（仅该 provider 生效）
 - `routes`：定义路由映射（传入 model -> 目标 provider/model）
 - 每个入口都必须有 `*` 兜底规则
 - `routes` 里引用的 `provider` 必须在 `providers` 中存在
 - `log` 是可选，不配置就不记录日志
 
 完整 schema：`config.schema.json`
+
+### Provider 级代理示例
+
+```json5
+{
+  providers: {
+    openai: {
+      type: "openai-completions",
+      base: "https://api.openai.com/v1",
+      apiKey: "sk-openai",
+      proxy: "http://127.0.0.1:7890",
+      models: { "gpt-4o-mini": {} }
+    },
+    anthropic: {
+      type: "anthropic-messages",
+      base: "https://api.anthropic.com",
+      apiKey: "sk-ant",
+      // 省略或空字符串表示直连
+      proxy: "",
+      models: { "claude-sonnet-4-5": {} }
+    }
+  },
+  routes: {
+    "openai-completions": {
+      "*": { provider: "openai", model: "gpt-4o-mini" }
+    },
+    "anthropic-messages": {
+      "*": { provider: "anthropic", model: "claude-sonnet-4-5" }
+    }
+  }
+}
+```
+
+说明：
+- `proxy` 仅影响当前 provider，不会影响其他 provider。
+- 当前版本代理来源仅 `providers.*.proxy`，不会读取 `HTTP_PROXY/HTTPS_PROXY` 环境变量。
 
 ## 日志与管理面板
 
