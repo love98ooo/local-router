@@ -102,6 +102,8 @@ class Logger {
   writeEvent(event: LogEvent): void {
     if (!this._enabled) return;
     try {
+      // 目录可能在测试或外部清理后被删除，这里做一次自愈。
+      this.ensureDirs();
       const dateStr = event.ts_start.slice(0, 10);
       const filePath = join(this.eventsDir, `${dateStr}.jsonl`);
       appendFileSync(filePath, `${JSON.stringify(event)}\n`);
@@ -139,6 +141,10 @@ export function initLogger(baseDir: string, config: LogConfig): void {
 
 export function getLogger(): Logger | null {
   return instance;
+}
+
+export function resetLogger(): void {
+  instance = null;
 }
 
 export function maskHeaders(headers: Headers): Record<string, string> {

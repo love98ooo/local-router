@@ -24,7 +24,7 @@ import {
 } from './log-query';
 import { queryLogSessions } from './log-sessions';
 import { getLogStorageInfo, startLogStorageBackgroundTask } from './log-storage';
-import { initLogger } from './logger';
+import { initLogger, resetLogger } from './logger';
 import { openAPISpec } from './openapi';
 import { createAnthropicMessagesRoutes } from './routes/anthropic-messages';
 import { createOpenaiCompletionsRoutes } from './routes/openai-completions';
@@ -755,6 +755,9 @@ export function createApp(
   if (config.log) {
     const logBaseDir = resolveLogBaseDir(config.log);
     initLogger(logBaseDir, config.log);
+  } else {
+    // 避免多实例/测试场景下复用到旧 logger 单例。
+    resetLogger();
   }
 
   // 启动日志存储空间后台计算任务
