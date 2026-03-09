@@ -57,7 +57,7 @@ local-router config
 Commands:
   config provider list [--json] [--config <path>]
   config provider show <name> [--show-secrets] [--json] [--config <path>]
-  config provider add <name> --type <type> --base <url> --api-key <key> --model <name> [--image-input <true|false>] [--reasoning <true|false>] [--config <path>]
+  config provider add <name> --type <type> --base <url> --api-key <key> --model <name> [--image-input] [--reasoning] [--config <path>]
   config provider set <name> [--base <url>] [--api-key <key>] [--proxy <url>] [--config <path>]
   config provider remove <name> [--force] [--config <path>]
   config provider model list <provider> [--json] [--config <path>]
@@ -114,7 +114,7 @@ async function handleProvider(args: string[]): Promise<void> {
   if (sub === 'add') {
     const [name, ...flagArgs] = rest;
     if (!name) throw new Error('用法: config provider add <name> --type <type> --base <url> --api-key <key> --model <name>');
-    const parsed = parseArgs({ args: flagArgs, options: { type: { type: 'string' }, base: { type: 'string' }, 'api-key': { type: 'string' }, model: { type: 'string' }, 'image-input': { type: 'string' }, reasoning: { type: 'string' }, proxy: { type: 'string' }, config: { type: 'string' } }, allowPositionals: true, strict: false });
+    const parsed = parseArgs({ args: flagArgs, options: { type: { type: 'string' }, base: { type: 'string' }, 'api-key': { type: 'string' }, model: { type: 'string' }, 'image-input': { type: 'boolean', default: false }, reasoning: { type: 'boolean', default: false }, proxy: { type: 'string' }, config: { type: 'string' } }, allowPositionals: true, strict: false });
     const { path, config } = readConfig(parsed.values.config);
     if (config.providers[name]) throw new Error(`provider 已存在: ${name}`);
     const type = parsed.values.type as ProviderType | undefined;
@@ -129,8 +129,8 @@ async function handleProvider(args: string[]): Promise<void> {
       apiKey,
       models: {
         [firstModel]: {
-          'image-input': parsed.values['image-input'] !== undefined ? parseBool(parsed.values['image-input']) : false,
-          reasoning: parsed.values.reasoning !== undefined ? parseBool(parsed.values.reasoning) : false,
+          'image-input': parsed.values['image-input'],
+          reasoning: parsed.values.reasoning,
         },
       },
       ...(parsed.values.proxy ? { proxy: parsed.values.proxy } : {}),
@@ -158,55 +158,126 @@ async function handleProvider(args: string[]): Promise<void> {
     const parsed = parseArgs({ args: flagArgs, options: { force: { type: 'boolean', default: false }, config: { type: 'string' } }, allowPositionals: true, strict: false });
     const { path, config } = readConfig(parsed.values.config);
     requireProvider(config, name);
-    if (!parsed.values.force) {
-      for (const [entry, modelMap] of Object.entries(config.routes)) {
-        for (const [match, target] of Object.entries(modelMap)) {
-          if (target.provider === name) throw new Error(`provider ${name} 被路由引用: ${entry}.${match}，如需强制删除请加 --force`);
+    const referencedRoutes: Array<{ entry: string; match: string }> = [];
+    for (const [entry, modelMap] of Object.entries(config.routes)) {
+      for (const [match, target] of Object.entries(modelMap)) {
+        if (target.provider === name) {
+          referencedRoutes.push({ entry, match });
         }
       }
     }
+
+    if (referencedRoutes.length > 0 && !parsed.values.force) {
+      const first = referencedRoutes[0];
+      throw new Error(`provider ${name} 被路由引用: ${first?.entry}.${first?.match}，如需删除并联动清理路由请加 --force`);
+    }
+
+    if (parsed.values.force) {
+      for (const ref of referencedRoutes) {
+        delete config.routes[ref.entry]?.[ref.match];
+      }
+      for (const [entry, modelMap] of Object.entries(config.routes)) {
+        if (Object.keys(modelMap).length === 0) {
+          delete config.routes[entry];
+        }
+      }
+    }
+
     delete config.providers[name];
     saveConfig(path, config);
-    console.log(`已删除 provider: ${name}`);
+    if (parsed.values.force && referencedRoutes.length > 0) {
+      console.log(`已删除 provider: ${name}，并清理 ${referencedRoutes.length} 条关联路由`);
+    } else {
+      console.log(`已删除 provider: ${name}`);
+    }
     return;
   }
   if (sub === 'model') {
     const [action, provider, model, ...flagArgs] = rest;
     if (!action) throw new Error('用法: config provider model <list|add|set|remove> ...');
-    const parsed = parseArgs({ args: flagArgs, options: { 'image-input': { type: 'string' }, reasoning: { type: 'string' }, config: { type: 'string' }, json: { type: 'boolean', default: false } }, allowPositionals: true, strict: false });
-    const { path, config } = readConfig(parsed.values.config);
     if (!provider) throw new Error('provider 必填');
-    const p = requireProvider(config, provider);
+
     if (action === 'list') {
+      const parsed = parseArgs({
+        args: flagArgs,
+        options: { config: { type: 'string' }, json: { type: 'boolean', default: false } },
+        allowPositionals: true,
+        strict: false,
+      });
+      const { config } = readConfig(parsed.values.config);
+      const p = requireProvider(config, provider);
       const rows = Object.entries(p.models).map(([name, caps]) => ({ name, ...caps }));
       if (parsed.values.json) return void console.log(JSON.stringify(rows, null, 2));
-      rows.forEach((r) => console.log(`${r.name}\timage-input=${Boolean(r['image-input'])}\treasoning=${Boolean(r.reasoning)}`));
+      rows.forEach((r) =>
+        console.log(`${r.name}	image-input=${Boolean(r['image-input'])}	reasoning=${Boolean(r.reasoning)}`)
+      );
       return;
     }
+
     if (!model) throw new Error('model 必填');
+
     if (action === 'add') {
+      const parsed = parseArgs({
+        args: flagArgs,
+        options: {
+          'image-input': { type: 'boolean', default: false },
+          reasoning: { type: 'boolean', default: false },
+          config: { type: 'string' },
+        },
+        allowPositionals: true,
+        strict: false,
+      });
+      const { path, config } = readConfig(parsed.values.config);
+      const p = requireProvider(config, provider);
       p.models[model] = {
-        'image-input': parsed.values['image-input'] !== undefined ? parseBool(parsed.values['image-input']) : false,
-        reasoning: parsed.values.reasoning !== undefined ? parseBool(parsed.values.reasoning) : false,
+        'image-input': parsed.values['image-input'],
+        reasoning: parsed.values.reasoning,
       };
       saveConfig(path, config);
       console.log(`已添加 model: ${provider}/${model}`);
       return;
     }
+
     if (action === 'set') {
+      const parsed = parseArgs({
+        args: flagArgs,
+        options: {
+          'image-input': { type: 'string' },
+          reasoning: { type: 'string' },
+          config: { type: 'string' },
+        },
+        allowPositionals: true,
+        strict: false,
+      });
+      const { path, config } = readConfig(parsed.values.config);
+      const p = requireProvider(config, provider);
       if (!p.models[model]) throw new Error(`model 不存在: ${provider}/${model}`);
-      if (parsed.values['image-input'] !== undefined) p.models[model]['image-input'] = parseBool(parsed.values['image-input']);
-      if (parsed.values.reasoning !== undefined) p.models[model].reasoning = parseBool(parsed.values.reasoning);
+      if (parsed.values['image-input'] !== undefined) {
+        p.models[model]['image-input'] = parseBool(parsed.values['image-input']);
+      }
+      if (parsed.values.reasoning !== undefined) {
+        p.models[model].reasoning = parseBool(parsed.values.reasoning);
+      }
       saveConfig(path, config);
       console.log(`已更新 model: ${provider}/${model}`);
       return;
     }
+
     if (action === 'remove') {
+      const parsed = parseArgs({
+        args: flagArgs,
+        options: { config: { type: 'string' } },
+        allowPositionals: true,
+        strict: false,
+      });
+      const { path, config } = readConfig(parsed.values.config);
+      const p = requireProvider(config, provider);
       delete p.models[model];
       saveConfig(path, config);
       console.log(`已删除 model: ${provider}/${model}`);
       return;
     }
+
     throw new Error(`未知子命令: provider model ${action}`);
   }
 

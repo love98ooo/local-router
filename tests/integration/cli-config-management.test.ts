@@ -74,9 +74,7 @@ describe('CLI config management', () => {
         'p2',
         'gpt-4o-mini',
         '--image-input',
-        'true',
         '--reasoning',
-        'true',
         '--config',
         configPath,
       ]);
@@ -117,9 +115,66 @@ describe('CLI config management', () => {
       expect(validate.exitCode).toBe(0);
 
       const finalConfig = JSON5.parse(readFileSync(configPath, 'utf-8')) as {
+        providers: Record<string, { models: Record<string, { 'image-input'?: boolean; reasoning?: boolean }> }>;
         routes: Record<string, Record<string, { provider: string; model: string }>>;
       };
       expect(finalConfig.routes['openai-completions']['gpt-4o'].provider).toBe('p2');
+      expect(finalConfig.providers.p2.models['gpt-4o-mini']['image-input']).toBe(true);
+      expect(finalConfig.providers.p2.models['gpt-4o-mini'].reasoning).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('provider remove --force cascades route cleanup', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'local-router-cli-config-force-'));
+    const configPath = join(dir, 'config.json5');
+    writeFileSync(
+      configPath,
+      `{
+  providers: {
+    keep: {
+      type: "openai-completions",
+      base: "https://example.com/v1",
+      apiKey: "keep-key",
+      models: {
+        "m-keep": {}
+      }
+    },
+    drop: {
+      type: "openai-completions",
+      base: "https://example.org/v1",
+      apiKey: "drop-key",
+      models: {
+        "m-drop": {}
+      }
+    }
+  },
+  routes: {
+    "openai-completions": {
+      "gpt-4o": { provider: "drop", model: "m-drop" },
+      "*": { provider: "keep", model: "m-keep" }
+    }
+  }
+}`,
+      'utf-8'
+    );
+
+    try {
+      const remove = runCli(['config', 'provider', 'remove', 'drop', '--force', '--config', configPath]);
+      expect(remove.exitCode).toBe(0);
+      expect(remove.stdout).toContain('并清理 1 条关联路由');
+
+      const parsed = JSON5.parse(readFileSync(configPath, 'utf-8')) as {
+        providers: Record<string, unknown>;
+        routes: Record<string, Record<string, { provider: string; model: string }>>;
+      };
+      expect(parsed.providers.drop).toBeUndefined();
+      expect(parsed.routes['openai-completions']['gpt-4o']).toBeUndefined();
+      expect(parsed.routes['openai-completions']['*'].provider).toBe('keep');
+
+      const validate = runCli(['config', 'validate', '--config', configPath]);
+      expect(validate.exitCode).toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
