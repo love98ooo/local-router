@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseArgs } from 'node:util';
-import { ensureConfigFile, resolveConfigPath, writeDefaultConfigFile } from './config';
+import { ensureConfigFile, loadConfig, resolveConfigPath, type RouteTarget, writeDefaultConfigFile } from './config';
 import {
   checkHealth,
   cleanupIfStale,
@@ -31,6 +31,7 @@ Commands:
   logs [--follow] [--lines <n>]
   init [--config <path>] [--force]
   config <subcommand> [...args]
+  get-route --type <route-type> [--model-alias <alias>] [--config <path>]
   health
   version
 
@@ -208,6 +209,57 @@ async function cmdInit(args: string[]): Promise<void> {
   console.log(result.created ? `已初始化配置: ${result.path}` : `配置已存在: ${result.path}`);
 }
 
+function formatRouteTarget(target: RouteTarget): string {
+  return `${target.provider} / ${target.model}`;
+}
+
+async function cmdGetRoute(args: string[]): Promise<void> {
+  const parsed = parseArgs({
+    args,
+    options: {
+      type: { type: 'string' },
+      'model-alias': { type: 'string' },
+      model: { type: 'string' },
+      config: { type: 'string' },
+    },
+    allowPositionals: true,
+    strict: false,
+  });
+
+  const routeType = parsed.values.type;
+  if (!routeType) {
+    throw new Error('用法: local-router get-route --type <route-type> [--model-alias <alias>] [--config <path>]');
+  }
+
+  const configPath = resolveConfigPath(parsed.values.config);
+  const config = loadConfig(configPath);
+  const modelMap = config.routes[routeType];
+  if (!modelMap) {
+    throw new Error(`route type 不存在: ${routeType}`);
+  }
+
+  const modelAlias = parsed.values['model-alias'] ?? parsed.values.model;
+  if (modelAlias) {
+    const target = modelMap[modelAlias] ?? modelMap['*'];
+    if (!target) {
+      throw new Error(`未命中路由且缺少兜底: ${routeType}`);
+    }
+    console.log(formatRouteTarget(target));
+    return;
+  }
+
+  const chunks: string[] = [];
+  for (const [alias, target] of Object.entries(modelMap)) {
+    if (alias === '*') continue;
+    chunks.push(`${alias} : ${formatRouteTarget(target)}`);
+  }
+  const fallback = modelMap['*'];
+  if (fallback) {
+    chunks.push(`default : ${formatRouteTarget(fallback)}`);
+  }
+  console.log(chunks.join(' | '));
+}
+
 async function cmdHealth(): Promise<void> {
   await cleanupIfStale();
   const state = readRuntimeState();
@@ -274,6 +326,9 @@ async function main(): Promise<void> {
       return;
     case 'config':
       await cmdConfig(rest);
+      return;
+    case 'get-route':
+      await cmdGetRoute(rest);
       return;
     case 'version':
       await printVersion();
