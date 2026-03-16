@@ -34,8 +34,8 @@ function resolveIdleTimeoutSeconds(explicit?: number): number {
   return DEFAULT_IDLE_TIMEOUT_SECONDS;
 }
 
-export function startServer(options: StartServerOptions): RunningServer {
-  const runtime = createAppRuntimeFromConfigPath(options.configPath);
+export async function startServer(options: StartServerOptions): Promise<RunningServer> {
+  const runtime = await createAppRuntimeFromConfigPath(options.configPath);
   const idleTimeout = resolveIdleTimeoutSeconds(options.idleTimeoutSeconds);
   const server = Bun.serve({
     fetch: runtime.app.fetch,

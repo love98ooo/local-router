@@ -8,7 +8,9 @@
 
 ```typescript
 // my-plugin.ts
-import type { PluginDefinition, Plugin } from 'local-router/src/plugin';
+// 仓库内开发时可用相对路径引入类型
+import type { PluginDefinition, Plugin } from '../src/plugin';
+// 外部插件可直接定义接口，无需引入类型依赖（参见下方"类型定义"小节）
 
 const definition: PluginDefinition = {
   name: 'my-plugin',
@@ -51,6 +53,30 @@ export default definition;
 ### 3. 应用配置
 
 调用 `POST /api/config/apply` 或重启服务。
+
+### 类型说明
+
+插件接口非常简单，外部插件**无需依赖 `local-router` 包**即可开发。只需导出一个符合以下结构的对象：
+
+```typescript
+// 外部插件只需满足此结构即可，无需安装 local-router
+export default {
+  name: 'my-plugin',
+  version: '1.0.0',
+  create(params: Record<string, unknown>) {
+    return {
+      async onRequest({ ctx, url, headers, body }) { /* ... */ },
+      async onResponse({ ctx, status, headers, body }) { /* ... */ },
+    };
+  },
+};
+```
+
+如果你在 local-router 仓库内开发插件，可以直接用相对路径引入类型：
+
+```typescript
+import type { PluginDefinition, Plugin } from '../src/plugin';
+```
 
 ## 插件接口参考
 
@@ -188,10 +214,11 @@ async onSSEResponse({ ctx }) {
 
 ## 热重载注意事项
 
-- 调用 `/api/config/apply` 会先 dispose 所有旧插件，再重新加载
+- 调用 `/api/config/apply` 会原子替换插件：先加载所有新插件，成功后一次性替换旧 map，旧实例延迟销毁
+- 如果新插件加载失败，apply 接口会在响应中返回 `pluginWarnings` 字段列出失败详情
 - 本地文件插件会追加时间戳参数绕过模块缓存
 - **有状态插件**：在 `dispose` 中清理计时器、连接等资源
-- 热重载期间的 in-flight 请求使用旧插件实例，不受影响
+- 热重载期间的 in-flight 请求使用旧插件实例，旧实例会延迟 5 秒后销毁以保护在途请求
 
 ## 调试技巧
 

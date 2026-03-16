@@ -1,5 +1,5 @@
 import { Eye, EyeOff, Plus, Trash2, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -137,6 +137,16 @@ export function ProviderForm({ name, config, isNew, onChange }: ProviderFormProp
   );
 }
 
+interface PluginEntry {
+  id: string;
+  config: PluginConfig;
+}
+
+let nextPluginId = 0;
+function generatePluginId(): string {
+  return `plugin-${Date.now()}-${++nextPluginId}`;
+}
+
 function PluginListEditor({
   plugins,
   onChange,
@@ -144,32 +154,53 @@ function PluginListEditor({
   plugins: PluginConfig[];
   onChange: (plugins: PluginConfig[]) => void;
 }) {
+  const [entries, setEntries] = useState<PluginEntry[]>(() =>
+    plugins.map((config) => ({ id: generatePluginId(), config }))
+  );
+
+  // 当外部 plugins 数组长度变化（如父组件 reset），重新同步
+  const prevPluginsRef = useRef(plugins);
+  useEffect(() => {
+    if (prevPluginsRef.current !== plugins) {
+      prevPluginsRef.current = plugins;
+      // 只有在长度不同时重建，避免和内部编辑冲突
+      if (plugins.length !== entries.length) {
+        setEntries(plugins.map((config) => ({ id: generatePluginId(), config })));
+      }
+    }
+  }, [plugins, entries.length]);
+
+  function commitEntries(next: PluginEntry[]) {
+    setEntries(next);
+    onChange(next.map((e) => e.config));
+  }
+
   function handleAdd() {
-    onChange([...plugins, { package: '' }]);
+    commitEntries([...entries, { id: generatePluginId(), config: { package: '' } }]);
   }
 
   function handleRemove(index: number) {
-    onChange(plugins.filter((_, i) => i !== index));
+    commitEntries(entries.filter((_, i) => i !== index));
   }
 
   function handleUpdate(index: number, updated: PluginConfig) {
-    const next = [...plugins];
-    next[index] = updated;
-    onChange(next);
+    const next = [...entries];
+    next[index] = { ...next[index], config: updated };
+    commitEntries(next);
   }
 
   function handleMoveUp(index: number) {
     if (index <= 0) return;
-    const next = [...plugins];
+    const next = [...entries];
     [next[index - 1], next[index]] = [next[index], next[index - 1]];
-    onChange(next);
+    commitEntries(next);
   }
 
   function handleMoveDown(index: number) {
-    if (index >= plugins.length - 1) return;
-    const next = [...plugins];
+    if (index >= entries.length - 1) return;
+    const next = [...entries];
     [next[index], next[index + 1]] = [next[index + 1], next[index]];
-    onChange(next);
+    commitEntries(next);
   }
 
   return (
@@ -187,16 +218,16 @@ function PluginListEditor({
         </Button>
       </div>
 
-      {plugins.length === 0 && (
+      {entries.length === 0 && (
         <p className="text-xs text-muted-foreground py-2">暂无插件配置</p>
       )}
 
-      {plugins.map((plugin, index) => (
+      {entries.map((entry, index) => (
         <PluginItemEditor
-          key={index}
-          plugin={plugin}
+          key={entry.id}
+          plugin={entry.config}
           index={index}
-          total={plugins.length}
+          total={entries.length}
           onUpdate={(updated) => handleUpdate(index, updated)}
           onRemove={() => handleRemove(index)}
           onMoveUp={() => handleMoveUp(index)}
@@ -228,6 +259,16 @@ function PluginItemEditor({
     plugin.params ? JSON.stringify(plugin.params, null, 2) : ''
   );
   const [paramsError, setParamsError] = useState<string | null>(null);
+
+  // 当 plugin.params 从外部变化时同步本地编辑态
+  const prevParamsRef = useRef(plugin.params);
+  useEffect(() => {
+    if (prevParamsRef.current !== plugin.params) {
+      prevParamsRef.current = plugin.params;
+      setParamsText(plugin.params ? JSON.stringify(plugin.params, null, 2) : '');
+      setParamsError(null);
+    }
+  }, [plugin.params]);
 
   function handleParamsChange(text: string) {
     setParamsText(text);

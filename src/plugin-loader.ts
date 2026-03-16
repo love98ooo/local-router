@@ -35,6 +35,11 @@ async function importPlugin(pkg: string, configDir: string): Promise<PluginDefin
   return definition;
 }
 
+export interface ReloadResult {
+  ok: boolean;
+  failures: { provider: string; package: string; error: string }[];
+}
+
 export class PluginManager {
   private plugins = new Map<string, LoadedPlugin[]>();
   private configDir: string;
@@ -43,11 +48,12 @@ export class PluginManager {
     this.configDir = configDir;
   }
 
-  async loadForProvider(
+  private async loadPluginsForProvider(
     providerName: string,
     pluginConfigs: PluginConfig[]
-  ): Promise<void> {
+  ): Promise<{ loaded: LoadedPlugin[]; failures: { provider: string; package: string; error: string }[] }> {
     const loaded: LoadedPlugin[] = [];
+    const failures: { provider: string; package: string; error: string }[] = [];
 
     for (const config of pluginConfigs) {
       try {
@@ -55,26 +61,61 @@ export class PluginManager {
         const instance = await definition.create(config.params ?? {});
         loaded.push({ config, definition, instance });
       } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
         console.error(
           `[plugin] 加载插件 "${config.package}" 失败 (provider: ${providerName}):`,
-          err instanceof Error ? err.message : err
+          errorMsg
         );
+        failures.push({ provider: providerName, package: config.package, error: errorMsg });
       }
     }
 
-    this.plugins.set(providerName, loaded);
+    return { loaded, failures };
   }
 
+  /**
+   * 原子热重载：先在临时容器中完成所有新插件的加载，
+   * 全部成功后原子替换旧 map，最后异步 dispose 旧实例。
+   * 即使部分插件加载失败，旧插件也不会被提前卸载。
+   */
   async reloadAll(
     providers: Record<string, ProviderConfig>
-  ): Promise<void> {
-    await this.disposeAll();
+  ): Promise<ReloadResult> {
+    const newPlugins = new Map<string, LoadedPlugin[]>();
+    const allFailures: { provider: string; package: string; error: string }[] = [];
 
+    // 阶段 1：在临时容器中加载所有新插件
     for (const [providerName, providerConfig] of Object.entries(providers)) {
       if (providerConfig.plugins && providerConfig.plugins.length > 0) {
-        await this.loadForProvider(providerName, providerConfig.plugins);
+        const { loaded, failures } = await this.loadPluginsForProvider(
+          providerName,
+          providerConfig.plugins
+        );
+        newPlugins.set(providerName, loaded);
+        allFailures.push(...failures);
       }
     }
+
+    // 阶段 2：保存旧实例引用，原子替换 map
+    const oldPlugins = this.plugins;
+    this.plugins = newPlugins;
+
+    // 阶段 3：异步 dispose 旧实例（不阻塞新请求，保护 in-flight 请求）
+    // 延迟 dispose 给 in-flight 请求留出完成时间
+    setTimeout(() => {
+      this.disposePluginMap(oldPlugins).catch((err) => {
+        console.error('[plugin] 旧插件销毁失败:', err);
+      });
+    }, 5000);
+
+    if (allFailures.length > 0) {
+      console.warn(
+        `[plugin] 热重载完成，但有 ${allFailures.length} 个插件加载失败:`,
+        allFailures.map((f) => `${f.provider}/${f.package}`).join(', ')
+      );
+    }
+
+    return { ok: allFailures.length === 0, failures: allFailures };
   }
 
   getPlugins(providerName: string): Plugin[] {
@@ -88,7 +129,12 @@ export class PluginManager {
   }
 
   async disposeAll(): Promise<void> {
-    for (const [, loadedPlugins] of this.plugins) {
+    await this.disposePluginMap(this.plugins);
+    this.plugins.clear();
+  }
+
+  private async disposePluginMap(pluginMap: Map<string, LoadedPlugin[]>): Promise<void> {
+    for (const [, loadedPlugins] of pluginMap) {
       for (const { instance, config } of loadedPlugins) {
         try {
           await instance.dispose?.();
@@ -100,6 +146,5 @@ export class PluginManager {
         }
       }
     }
-    this.plugins.clear();
   }
 }

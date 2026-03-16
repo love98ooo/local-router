@@ -343,13 +343,16 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
         const logBaseDir = resolveLogBaseDir(config.log);
         initLogger(logBaseDir, config.log);
       }
-      await pluginManager.reloadAll(config.providers);
+      const pluginResult = await pluginManager.reloadAll(config.providers);
       return _c.json({
         ok: true,
         summary: {
           providers: Object.keys(config.providers).length,
           routes: Object.keys(config.routes).length,
         },
+        ...(pluginResult.failures.length > 0 && {
+          pluginWarnings: pluginResult.failures,
+        }),
       });
     } catch (err) {
       return _c.json({ error: `应用配置失败: ${err instanceof Error ? err.message : err}` }, 500);
@@ -874,10 +877,10 @@ async function proxyAdminToDevServer(c: Context, origin: string): Promise<Respon
   });
 }
 
-export function createApp(
+export async function createApp(
   store: ConfigStore,
   options?: { registerCleanup?: (cleanup: CleanupFn) => void }
-): Hono {
+): Promise<Hono> {
   const config = store.get();
   console.log(`已加载配置: ${store.getPath()}`);
 
@@ -896,9 +899,12 @@ export function createApp(
   // 实例化插件管理器
   const configDir = dirname(resolve(store.getPath()));
   const pluginManager = new PluginManager(configDir);
-  pluginManager.reloadAll(config.providers).catch((err) => {
-    console.error('[plugin] 插件初始化失败:', err);
-  });
+  const reloadResult = await pluginManager.reloadAll(config.providers);
+  if (!reloadResult.ok) {
+    console.warn(
+      `[plugin] 插件初始化完成，但有 ${reloadResult.failures.length} 个插件加载失败`
+    );
+  }
   options?.registerCleanup?.(() => {
     pluginManager.disposeAll().catch(() => {});
   });
@@ -952,15 +958,15 @@ export function createApp(
   return app;
 }
 
-export function createAppFromConfigPath(configPath: string): Hono {
+export async function createAppFromConfigPath(configPath: string): Promise<Hono> {
   const store = new ConfigStore(configPath);
   return createApp(store);
 }
 
-export function createAppRuntimeFromConfigPath(configPath: string): AppRuntime {
+export async function createAppRuntimeFromConfigPath(configPath: string): Promise<AppRuntime> {
   const store = new ConfigStore(configPath);
   const cleanups: CleanupFn[] = [];
-  const app = createApp(store, {
+  const app = await createApp(store, {
     registerCleanup: (cleanup) => {
       cleanups.push(cleanup);
     },
@@ -979,7 +985,7 @@ export function createAppRuntimeFromConfigPath(configPath: string): AppRuntime {
   };
 }
 
-export function createDefaultAppFromProcessArgs(): Hono {
+export async function createDefaultAppFromProcessArgs(): Promise<Hono> {
   const configPath = parseConfigPath();
   const store = new ConfigStore(configPath);
   return createApp(store);

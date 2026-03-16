@@ -297,9 +297,9 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
       } finally {
         logger?.writeEvent(
           buildLogEvent(logMeta, targetUrl, proxy, Date.now(), {
-            upstream_status: upstreamRes.status,
+            upstream_status: sseStatus,
             content_type_res: contentTypeRes,
-            response_headers: responseHeaders,
+            response_headers: sseHeaders,
             stream_bytes: streamBytes,
             provider_request_id: providerRequestId,
             ...(streamFile != null && { stream_file: streamFile }),
@@ -324,7 +324,6 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
   let responseText = await upstreamRes.text();
   let responseStatus = upstreamRes.status;
   let finalResponseHeaders = responseHeaders;
-  const responseBytes = Buffer.byteLength(responseText, 'utf-8');
 
   // JSON 响应插件处理
   if (hasPlugins) {
@@ -362,10 +361,13 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
     });
   }
 
+  // 用最终客户端可见的值计算 response_bytes
+  const responseBytes = Buffer.byteLength(responseText, 'utf-8');
+
   const eventOverrides: Partial<LogEvent> = {
     upstream_status: upstreamRes.status,
     content_type_res: contentTypeRes,
-    response_headers: responseHeaders,
+    response_headers: finalResponseHeaders,
     response_bytes: responseBytes,
     provider_request_id: providerRequestId,
     ...pluginLogOverrides,
