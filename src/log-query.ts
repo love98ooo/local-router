@@ -23,9 +23,6 @@ const DEFAULT_QUERY_LIMIT = 50;
 const MAX_EXPORT_ROWS = 5_000;
 const MAX_Q_LENGTH = 200;
 
-const SENSITIVE_FIELD_PATTERN =
-  /(authorization|token|cookie|password|passphrase|secret|api[_-]?key)/i;
-
 interface LocatedLogEvent {
   id: string;
   date: string;
@@ -104,7 +101,7 @@ export interface LogEventDetail {
     method: string;
     path: string;
     contentType: string | null;
-    requestHeadersMasked: Record<string, string>;
+    requestHeaders: Record<string, string>;
     requestBody: unknown | null;
   };
   response: {
@@ -431,37 +428,6 @@ function eventToSummary(item: LocatedLogEvent): LogEventSummary {
   };
 }
 
-function maskValue(value: unknown): unknown {
-  if (value == null) return value;
-  if (typeof value === 'string') {
-    return value.length > 4 ? `${value.slice(0, 2)}****` : '****';
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return '****';
-  }
-  return '****';
-}
-
-function maskSensitiveDeep(value: unknown, parentKey = ''): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => maskSensitiveDeep(item, parentKey));
-  }
-
-  if (value && typeof value === 'object') {
-    const output: Record<string, unknown> = {};
-    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      if (SENSITIVE_FIELD_PATTERN.test(key) || SENSITIVE_FIELD_PATTERN.test(parentKey)) {
-        output[key] = maskValue(child);
-      } else {
-        output[key] = maskSensitiveDeep(child, key);
-      }
-    }
-    return output;
-  }
-
-  return value;
-}
-
 function detectBodyPolicy(event: LogEvent): 'off' | 'masked' | 'full' | 'unknown' {
   const hasRequestBody = event.request_body !== undefined;
   const hasResponseBody = event.response_body !== undefined;
@@ -560,57 +526,57 @@ async function buildLogEventDetail(
   location: { date: string; line: number; file: string },
   context: LogQueryContext
 ): Promise<LogEventDetail> {
-  const maskedEvent = maskSensitiveDeep(parsed) as LogEvent;
-  const level = getLevel(maskedEvent);
-  const statusClass = getStatusClass(maskedEvent);
-  const bodyPolicy = detectBodyPolicy(maskedEvent);
-  const requestBodyAvailable = maskedEvent.request_body !== undefined;
-  const responseBodyAvailable = maskedEvent.response_body !== undefined;
-  const streamCaptured = Boolean(maskedEvent.stream_file);
+  const event = parsed;
+  const level = getLevel(event);
+  const statusClass = getStatusClass(event);
+  const bodyPolicy = detectBodyPolicy(event);
+  const requestBodyAvailable = event.request_body !== undefined;
+  const responseBodyAvailable = event.response_body !== undefined;
+  const streamCaptured = Boolean(event.stream_file);
   const { content: streamContent, warning: streamWarning } = readStreamContent(
     resolveLogBaseDir(context.logConfig),
-    maskedEvent.stream_file
+    event.stream_file
   );
 
   return {
     id,
     summary: {
       id,
-      ts: maskedEvent.ts_start,
+      ts: event.ts_start,
       level,
-      provider: maskedEvent.provider,
-      routeType: maskedEvent.route_type,
-      routeRuleKey: maskedEvent.route_rule_key,
-      requestId: maskedEvent.request_id,
-      latencyMs: Math.max(0, maskedEvent.latency_ms ?? 0),
-      upstreamStatus: maskedEvent.upstream_status ?? 0,
+      provider: event.provider,
+      routeType: event.route_type,
+      routeRuleKey: event.route_rule_key,
+      requestId: event.request_id,
+      latencyMs: Math.max(0, event.latency_ms ?? 0),
+      upstreamStatus: event.upstream_status ?? 0,
       statusClass,
       hasError: level === 'error',
-      model: maskedEvent.model_out || maskedEvent.model_in,
-      modelIn: maskedEvent.model_in,
-      modelOut: maskedEvent.model_out,
+      model: event.model_out || event.model_in,
+      modelIn: event.model_in,
+      modelOut: event.model_out,
     },
     request: {
-      method: maskedEvent.method,
-      path: maskedEvent.path,
-      contentType: maskedEvent.content_type_req,
-      requestHeadersMasked: maskedEvent.request_headers_masked,
-      requestBody: maskedEvent.request_body ?? null,
+      method: event.method,
+      path: event.path,
+      contentType: event.content_type_req,
+      requestHeaders: event.request_headers,
+      requestBody: event.request_body ?? null,
     },
     response: {
-      upstreamStatus: maskedEvent.upstream_status ?? 0,
-      contentType: maskedEvent.content_type_res,
-      responseHeaders: maskedEvent.response_headers,
-      responseBody: maskedEvent.response_body ?? null,
+      upstreamStatus: event.upstream_status ?? 0,
+      contentType: event.content_type_res,
+      responseHeaders: event.response_headers,
+      responseBody: event.response_body ?? null,
     },
     upstream: {
-      targetUrl: maskedEvent.target_url,
-      proxyUrl: maskedEvent.proxy_url ?? null,
-      providerRequestId: maskedEvent.provider_request_id,
-      errorType: maskedEvent.error_type,
-      errorMessage: maskedEvent.error_message,
-      isStream: maskedEvent.is_stream,
-      streamFile: maskedEvent.stream_file ?? null,
+      targetUrl: event.target_url,
+      proxyUrl: event.proxy_url ?? null,
+      providerRequestId: event.provider_request_id,
+      errorType: event.error_type,
+      errorMessage: event.error_message,
+      isStream: event.is_stream,
+      streamFile: event.stream_file ?? null,
       streamContent,
     },
     capture: {
@@ -619,11 +585,11 @@ async function buildLogEventDetail(
       responseBodyAvailable,
       streamCaptured,
       truncatedHints: [
-        ...buildTruncatedHints(maskedEvent, context.logConfig?.bodyPolicy ?? bodyPolicy),
+        ...buildTruncatedHints(event, context.logConfig?.bodyPolicy ?? bodyPolicy),
         ...(streamWarning ? [streamWarning] : []),
       ],
     },
-    rawEvent: maskedEvent,
+    rawEvent: event,
     location,
   };
 }

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { Context } from 'hono';
 import type { LogEvent, LogMeta } from './logger';
-import { extractProviderRequestId, getLogger, maskUrlCredentials } from './logger';
+import { extractProviderRequestId, getLogger, normalizeUrl } from './logger';
 
 export type AuthType = 'x-api-key' | 'bearer';
 
@@ -87,14 +87,14 @@ function buildLogEvent(
     provider: logMeta.provider,
     model_in: logMeta.modelIn,
     model_out: logMeta.modelOut,
-    target_url: maskUrlCredentials(targetUrl),
-    proxy_url: proxyUrl ? maskUrlCredentials(proxyUrl) : null,
+    target_url: normalizeUrl(targetUrl),
+    proxy_url: proxyUrl ? normalizeUrl(proxyUrl) : null,
     is_stream: logMeta.isStream,
     upstream_status: 0,
     content_type_req: logMeta.contentTypeReq,
     content_type_res: null,
     user_agent: logMeta.userAgent,
-    request_headers_masked: logMeta.requestHeadersMasked,
+    request_headers: logMeta.requestHeaders,
     response_headers: {},
     request_bytes: logMeta.requestBytes,
     response_bytes: null,

@@ -33,7 +33,7 @@ function baseDetail(overrides: DeepPartial<LogEventDetail> = {}): LogEventDetail
       method: 'POST',
       path: '/v1/messages',
       contentType: 'application/json',
-      requestHeadersMasked: {},
+      requestHeaders: {},
       requestBody: null,
     },
     response: {

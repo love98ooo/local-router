@@ -2,14 +2,6 @@ import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LogConfig } from './config';
 
-const SENSITIVE_HEADERS = new Set([
-  'authorization',
-  'x-api-key',
-  'cookie',
-  'set-cookie',
-  'proxy-authorization',
-]);
-
 export interface LogEvent {
   request_id: string;
   ts_start: string;
@@ -29,7 +21,7 @@ export interface LogEvent {
   content_type_req: string | null;
   content_type_res: string | null;
   user_agent: string | null;
-  request_headers_masked: Record<string, string>;
+  request_headers: Record<string, string>;
   response_headers: Record<string, string>;
   request_bytes: number;
   response_bytes: number | null;
@@ -56,7 +48,7 @@ export interface LogMeta {
   contentTypeReq: string | null;
   userAgent: string | null;
   requestBytes: number;
-  requestHeadersMasked: Record<string, string>;
+  requestHeaders: Record<string, string>;
 }
 
 class Logger {
@@ -148,14 +140,10 @@ export function resetLogger(): void {
   instance = null;
 }
 
-export function maskHeaders(headers: Headers): Record<string, string> {
+export function collectHeaders(headers: Headers): Record<string, string> {
   const result: Record<string, string> = {};
   headers.forEach((value, key) => {
-    if (SENSITIVE_HEADERS.has(key.toLowerCase())) {
-      result[key] = value.length > 4 ? `${value.slice(0, 4)}****` : '****';
-    } else {
-      result[key] = value;
-    }
+    result[key] = value;
   });
   return result;
 }
@@ -168,14 +156,6 @@ export function extractProviderRequestId(headers: Headers): string | null {
   return null;
 }
 
-export function maskUrlCredentials(rawUrl: string): string {
-  try {
-    const parsed = new URL(rawUrl);
-    if (!parsed.username && !parsed.password) return rawUrl;
-    if (parsed.username) parsed.username = '****';
-    if (parsed.password) parsed.password = '****';
-    return parsed.toString();
-  } catch {
-    return rawUrl;
-  }
+export function normalizeUrl(rawUrl: string): string {
+  return rawUrl;
 }

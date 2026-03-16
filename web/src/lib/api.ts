@@ -259,13 +259,13 @@ export interface LogEventDetail {
     method: string;
     path: string;
     contentType: string | null;
-    requestHeadersMasked: Record<string, string>;
+    requestHeaders: Record<string, string> | null;
     requestBody: unknown | null;
   };
   response: {
     upstreamStatus: number;
     contentType: string | null;
-    responseHeaders: Record<string, string>;
+    responseHeaders: Record<string, string> | null;
     responseBody: string | null;
   };
   upstream: {

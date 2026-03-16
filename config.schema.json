@@ -218,8 +218,8 @@
           "type": "string",
           "enum": ["off", "masked", "full"],
           "default": "off",
-          "description": "请求体与响应体的记录策略。off：不记录 body 内容（推荐日常使用）；masked：脱敏后记录（当前版本行为同 full，后续将完善字段级脱敏）；full：完整记录所有内容（仅建议调试时临时开启，注意隐私风险）。",
-          "markdownDescription": "请求体与响应体的记录策略：\n- `off`：不记录 body 内容（推荐日常使用）\n- `masked`：脱敏后记录（当前版本行为同 `full`，后续完善）\n- `full`：完整记录所有内容（仅调试时使用）"
+          "description": "请求体与响应体的记录策略。off：不记录 body 内容（推荐日常使用）；full：完整记录所有内容（仅建议调试时临时开启，注意隐私风险）。为兼容旧配置，masked 仍被接受，但当前行为等同于 full。",
+          "markdownDescription": "请求体与响应体的记录策略：\n- `off`：不记录 body 内容（推荐日常使用）\n- `full`：完整记录所有内容（仅调试时使用）\n- `masked`：兼容旧配置，当前行为等同于 `full`"
         }
       }
     },

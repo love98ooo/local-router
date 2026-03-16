@@ -51,6 +51,12 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(2)} ${units[i]}`;
 }
 
+function formatBodyPolicy(bodyPolicy: string): string {
+  if (bodyPolicy === 'off') return '不记录';
+  if (bodyPolicy === 'full' || bodyPolicy === 'masked') return '完整记录';
+  return bodyPolicy;
+}
+
 export function OverviewStrip(props: OverviewStripProps) {
   const {
     isHealthLoading,
@@ -122,7 +128,7 @@ export function OverviewStrip(props: OverviewStripProps) {
           )}
           <div className="flex flex-wrap gap-1.5">
             <Badge variant="outline" className="text-xs">
-              body: {bodyPolicy}
+              body: {formatBodyPolicy(bodyPolicy)}
             </Badge>
             <Badge variant="outline" className="text-xs">
               stream: {streamsEnabled ? 'on' : 'off'}

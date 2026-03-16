@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import type { ConfigStore } from '../config-store';
 import type { LogMeta } from '../logger';
-import { maskHeaders } from '../logger';
+import { collectHeaders } from '../logger';
 import type { AuthType } from '../proxy';
 import { proxyRequest } from '../proxy';
 import type { RouteTarget } from '../config';
@@ -80,7 +80,7 @@ export function createModelRoutingHandler(options: ModelRoutingOptions) {
       contentTypeReq: c.req.header('content-type') ?? null,
       userAgent: c.req.header('user-agent') ?? null,
       requestBytes: Buffer.byteLength(body, 'utf-8'),
-      requestHeadersMasked: maskHeaders(c.req.raw.headers),
+      requestHeaders: collectHeaders(c.req.raw.headers),
     };
 
     return proxyRequest(c, {

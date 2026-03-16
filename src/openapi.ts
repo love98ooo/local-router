@@ -441,7 +441,7 @@ export const openAPISpec = {
                         method: { type: 'string' },
                         path: { type: 'string' },
                         contentType: { type: ['string', 'null'] },
-                        requestHeadersMasked: {
+                        requestHeaders: {
                           type: 'object',
                           additionalProperties: { type: 'string' },
                         },

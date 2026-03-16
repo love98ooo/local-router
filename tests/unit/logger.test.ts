@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
+  collectHeaders,
   extractProviderRequestId,
   getLogger,
   initLogger,
   type LogEvent,
-  maskHeaders,
-  maskUrlCredentials,
+  normalizeUrl,
 } from '../../src/logger';
 import type { LogConfig } from '../../src/config';
 
@@ -99,15 +99,15 @@ describe('logger', () => {
     });
   });
 
-  describe('maskUrlCredentials', () => {
-    test('应脱敏 URL 中的用户名和密码', () => {
-      expect(maskUrlCredentials('http://user:pass@127.0.0.1:7890')).toBe(
-        'http://****:****@127.0.0.1:7890/'
+  describe('normalizeUrl', () => {
+    test('应保留 URL 中的用户名和密码', () => {
+      expect(normalizeUrl('http://user:pass@127.0.0.1:7890')).toBe(
+        'http://user:pass@127.0.0.1:7890'
       );
     });
 
     test('无凭证 URL 应保持不变', () => {
-      expect(maskUrlCredentials('https://api.example.com/v1/messages')).toBe(
+      expect(normalizeUrl('https://api.example.com/v1/messages')).toBe(
         'https://api.example.com/v1/messages'
       );
     });
@@ -132,13 +132,13 @@ describe('logger', () => {
         model_in: 'gpt-4',
         model_out: 'gpt-4-turbo',
         target_url: 'https://api.openai.com/v1/chat/completions',
-        proxy_url: 'http://****:****@127.0.0.1:7890/',
+        proxy_url: 'http://user:pass@127.0.0.1:7890',
         is_stream: false,
         upstream_status: 200,
         content_type_req: 'application/json',
         content_type_res: 'application/json',
         user_agent: 'test-agent/1.0',
-        request_headers_masked: { 'content-type': 'application/json' },
+        request_headers: { 'content-type': 'application/json' },
         response_headers: { 'content-type': 'application/json' },
         request_bytes: 100,
         response_bytes: 200,
@@ -159,7 +159,7 @@ describe('logger', () => {
       expect(parsed.request_id).toBe('test-uuid-123');
       expect(parsed.method).toBe('POST');
       expect(parsed.upstream_status).toBe(200);
-      expect(parsed.proxy_url).toBe('http://****:****@127.0.0.1:7890/');
+      expect(parsed.proxy_url).toBe('http://user:pass@127.0.0.1:7890');
     });
 
     test('应在同一天的多条事件追加到同一文件', () => {
@@ -184,7 +184,7 @@ describe('logger', () => {
         content_type_req: 'application/json',
         content_type_res: 'application/json',
         user_agent: null,
-        request_headers_masked: {},
+        request_headers: {},
         response_headers: {},
         request_bytes: 100,
         response_bytes: 200,
@@ -229,7 +229,7 @@ describe('logger', () => {
         content_type_req: 'application/json',
         content_type_res: 'application/json',
         user_agent: null,
-        request_headers_masked: {},
+        request_headers: {},
         response_headers: {},
         request_bytes: 100,
         response_bytes: 200,
@@ -283,7 +283,7 @@ describe('logger', () => {
         content_type_req: 'application/json',
         content_type_res: 'application/json',
         user_agent: null,
-        request_headers_masked: {},
+        request_headers: {},
         response_headers: {},
         request_bytes: 100,
         response_bytes: 200,
@@ -374,22 +374,22 @@ describe('logger', () => {
     });
   });
 
-  describe('maskHeaders', () => {
-    test('应脱敏敏感请求头', () => {
+  describe('collectHeaders', () => {
+    test('应保留敏感请求头原值', () => {
       const headers = new Headers({
         'content-type': 'application/json',
         authorization: 'Bearer sk-1234567890abcdef',
         'x-api-key': 'ak-1234567890abcdef',
       });
 
-      const masked = maskHeaders(headers);
+      const collected = collectHeaders(headers);
 
-      expect(masked['content-type']).toBe('application/json');
-      expect(masked.authorization).toBe('Bear****');
-      expect(masked['x-api-key']).toBe('ak-1****');
+      expect(collected['content-type']).toBe('application/json');
+      expect(collected.authorization).toBe('Bearer sk-1234567890abcdef');
+      expect(collected['x-api-key']).toBe('ak-1234567890abcdef');
     });
 
-    test('应处理大小写不敏感的敏感头名称', () => {
+    test('应处理大小写不敏感的头名称', () => {
       const headers = new Headers({
         Authorization: 'Bearer token123',
         'X-API-Key': 'key123',
@@ -398,24 +398,24 @@ describe('logger', () => {
         'Proxy-Authorization': 'Basic dXNlcjpwYXNz',
       });
 
-      const masked = maskHeaders(headers);
+      const collected = collectHeaders(headers);
 
       // Headers 对象会将所有头名称转为小写
-      expect(masked.authorization).toBe('Bear****');
-      expect(masked['x-api-key']).toBe('key1****');
-      expect(masked.cookie).toBe('sess****');
-      expect(masked['set-cookie']).toBe('sess****');
-      expect(masked['proxy-authorization']).toBe('Basi****');
+      expect(collected.authorization).toBe('Bearer token123');
+      expect(collected['x-api-key']).toBe('key123');
+      expect(collected.cookie).toBe('session=abc123');
+      expect(collected['set-cookie']).toBe('session=abc123; HttpOnly');
+      expect(collected['proxy-authorization']).toBe('Basic dXNlcjpwYXNz');
     });
 
-    test('应处理短值的敏感头', () => {
+    test('应处理短值的头', () => {
       const headers = new Headers({
         authorization: 'abc',
       });
 
-      const masked = maskHeaders(headers);
+      const collected = collectHeaders(headers);
 
-      expect(masked.authorization).toBe('****');
+      expect(collected.authorization).toBe('abc');
     });
 
     test('应保留非敏感头的完整值', () => {
@@ -426,19 +426,19 @@ describe('logger', () => {
         'x-custom-header': 'custom-value',
       });
 
-      const masked = maskHeaders(headers);
+      const collected = collectHeaders(headers);
 
-      expect(masked['content-type']).toBe('application/json');
-      expect(masked.accept).toBe('application/json');
-      expect(masked['user-agent']).toBe('test-agent/1.0');
-      expect(masked['x-custom-header']).toBe('custom-value');
+      expect(collected['content-type']).toBe('application/json');
+      expect(collected.accept).toBe('application/json');
+      expect(collected['user-agent']).toBe('test-agent/1.0');
+      expect(collected['x-custom-header']).toBe('custom-value');
     });
 
     test('应处理空 Headers', () => {
       const headers = new Headers();
-      const masked = maskHeaders(headers);
+      const collected = collectHeaders(headers);
 
-      expect(Object.keys(masked).length).toBe(0);
+      expect(Object.keys(collected).length).toBe(0);
     });
   });
 
@@ -546,7 +546,7 @@ describe('logger', () => {
         content_type_req: 'application/json',
         content_type_res: 'application/json',
         user_agent: null,
-        request_headers_masked: {},
+        request_headers: {},
         response_headers: {},
         request_bytes: 100,
         response_bytes: 200,

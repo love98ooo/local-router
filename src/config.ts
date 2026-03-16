@@ -51,7 +51,7 @@ const DEFAULT_CONFIG = `{
   // 日志配置（可选，不配置则不启用日志记录）
   // log: {
   //   enabled: true,
-  //   bodyPolicy: "off",       // off | masked | full
+  //   bodyPolicy: "off",       // off | full
   //   streams: {
   //     enabled: true,
   //     maxBytesPerRequest: 10485760,  // 10MB

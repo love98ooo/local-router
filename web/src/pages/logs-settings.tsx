@@ -36,7 +36,7 @@ export function LogsSettingsPage() {
     <div className="flex h-full min-h-0 flex-col gap-6 lg:overflow-hidden">
       <div className="shrink-0">
         <h2 className="text-2xl font-bold tracking-tight">日志配置</h2>
-        <p className="text-muted-foreground">控制请求/响应日志的记录方式与存储策略</p>
+        <p className="text-muted-foreground">控制请求/响应日志的记录范围与存储策略</p>
       </div>
 
       <div className="min-h-0 flex-1 space-y-4">
@@ -64,13 +64,13 @@ export function LogsSettingsPage() {
             <div className="rounded-lg border bg-background">
               <div className="border-b px-3 py-3">
                 <h3 className="text-base font-semibold">通用设置</h3>
-                <p className="text-sm text-muted-foreground">日志目录、Body 记录策略等通用配置</p>
+                <p className="text-sm text-muted-foreground">日志目录、Body 记录范围等通用配置</p>
               </div>
               <div className="space-y-3 px-3 py-3">
                 <div className="space-y-1.5">
-                  <Label>Body 记录策略</Label>
+                  <Label>Body 记录范围</Label>
                   <Select
-                    value={log.bodyPolicy ?? 'off'}
+                    value={log.bodyPolicy === 'masked' ? 'full' : (log.bodyPolicy ?? 'off')}
                     onValueChange={(v) =>
                       updateLog((l) => ({
                         ...l,
@@ -83,13 +83,12 @@ export function LogsSettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="off">off — 不记录 body（推荐）</SelectItem>
-                      <SelectItem value="masked">masked — 脱敏记录</SelectItem>
-                      <SelectItem value="full">full — 完整记录（仅调试）</SelectItem>
+                      <SelectItem value="full">full — 记录完整 body（仅调试）</SelectItem>
                     </SelectContent>
                   </Select>
-                  {log.bodyPolicy === 'full' && (
+                  {(log.bodyPolicy === 'full' || log.bodyPolicy === 'masked') && (
                     <p className="text-xs text-muted-foreground">
-                      当前为完整记录模式，可能包含敏感信息，建议仅在排障时临时开启。
+                      当前会保存完整 body，可能包含敏感信息，建议仅在排障时临时开启。
                     </p>
                   )}
                 </div>

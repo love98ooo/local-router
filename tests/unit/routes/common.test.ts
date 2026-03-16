@@ -66,7 +66,7 @@ describe('createModelRoutingHandler', () => {
           contentTypeReq: c.req.header('content-type') ?? null,
           userAgent: c.req.header('user-agent') ?? null,
           requestBytes: Buffer.byteLength(rawText, 'utf-8'),
-          requestHeadersMasked: Object.fromEntries(
+          requestHeaders: Object.fromEntries(
             Array.from(c.req.raw.headers.entries()).map(([k, v]) => [k, v])
           ),
         };
