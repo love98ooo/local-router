@@ -388,6 +388,8 @@ export function LogDetailPage() {
             />
           </div>
         </section>
+
+        <PluginPipelineSection detail={detail} />
       </TabsContent>
 
       <TabsContent value="request-response" className="mt-0 space-y-4">
@@ -477,6 +479,87 @@ export function LogDetailPage() {
         </section>
       </TabsContent>
     </Tabs>
+  );
+}
+
+function PluginPipelineSection({ detail }: { detail: LogEventDetail }) {
+  const plugins = detail.plugins;
+
+  if (!plugins || (!plugins.request?.length && !plugins.response?.length)) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg border bg-background">
+      <div className="border-b px-3 py-3">
+        <h3 className="text-base font-semibold">插件管线</h3>
+        <p className="text-sm text-muted-foreground">
+          请求/响应经过的插件处理链路（洋葱模型）
+        </p>
+      </div>
+      <div className="space-y-3 px-3 py-3">
+        {plugins.request && plugins.request.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">请求阶段（正序）</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className="text-xs">用户请求</Badge>
+              {plugins.request.map((p, i) => (
+                <div key={`req-${p.name}-${i}`} className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">→</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {p.name}
+                  </Badge>
+                </div>
+              ))}
+              <span className="text-muted-foreground">→</span>
+              <Badge variant="outline" className="text-xs">Provider 请求</Badge>
+            </div>
+          </div>
+        )}
+
+        {plugins.response && plugins.response.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">响应阶段（逆序）</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className="text-xs">Provider 响应</Badge>
+              {[...plugins.response].reverse().map((p, i) => (
+                <div key={`res-${p.name}-${i}`} className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">→</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {p.name}
+                  </Badge>
+                </div>
+              ))}
+              <span className="text-muted-foreground">→</span>
+              <Badge variant="outline" className="text-xs">用户响应</Badge>
+            </div>
+          </div>
+        )}
+
+        {plugins.requestUrlAfterPlugins && (
+          <div className="space-y-1">
+            <div className="text-xs text-muted-foreground">插件处理后 URL</div>
+            <div className="rounded-md border bg-muted/30 p-2 font-mono text-xs break-all">
+              {plugins.requestUrlAfterPlugins}
+            </div>
+          </div>
+        )}
+
+        {plugins.requestBodyAfterPlugins !== undefined && (
+          <JsonBlock
+            title="插件处理后请求 body"
+            value={plugins.requestBodyAfterPlugins}
+          />
+        )}
+
+        {plugins.responseBodyAfterPlugins !== undefined && (
+          <JsonBlock
+            title="插件处理后响应 body"
+            value={plugins.responseBodyAfterPlugins}
+          />
+        )}
+      </div>
+    </section>
   );
 }
 

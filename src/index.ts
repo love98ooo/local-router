@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -28,6 +29,7 @@ import { queryLogSessions } from './log-sessions';
 import { getLogStorageInfo, startLogStorageBackgroundTask } from './log-storage';
 import { initLogger, resetLogger } from './logger';
 import { openAPISpec } from './openapi';
+import { PluginManager } from './plugin-loader';
 import { createAnthropicMessagesRoutes } from './routes/anthropic-messages';
 import { createOpenaiCompletionsRoutes } from './routes/openai-completions';
 import { createOpenaiResponsesRoutes } from './routes/openai-responses';
@@ -49,7 +51,7 @@ const ROUTE_REGISTRY: Record<
     authHint: string;
     requiredFields: string[];
     samplePayload: Record<string, unknown>;
-    create: (routeType: string, store: ConfigStore) => Hono;
+    create: (routeType: string, store: ConfigStore, pluginManager?: PluginManager) => Hono;
   }
 > = {
   'openai-completions': {
@@ -205,7 +207,7 @@ function createChatProxyModel(providerName: string, providerConfig: AppConfig['p
 }
 
 // 管理面板配置 API
-function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: CleanupFn) => void): Hono {
+function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, registerCleanup?: (cleanup: CleanupFn) => void): Hono {
   const api = new Hono();
   const cryptoSessions = new Map<string, { session: CryptoSession; createdAt: number }>();
   const CRYPTO_SESSION_TTL_MS = 2 * 60 * 1000;
@@ -334,13 +336,14 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
     }
   });
 
-  api.post('/config/apply', (_c) => {
+  api.post('/config/apply', async (_c) => {
     try {
       const config = store.reload();
       if (config.log) {
         const logBaseDir = resolveLogBaseDir(config.log);
         initLogger(logBaseDir, config.log);
       }
+      await pluginManager.reloadAll(config.providers);
       return _c.json({
         ok: true,
         summary: {
@@ -890,6 +893,16 @@ export function createApp(
   const stopLogStorageTask = startLogStorageBackgroundTask(config.log);
   options?.registerCleanup?.(stopLogStorageTask);
 
+  // 实例化插件管理器
+  const configDir = dirname(resolve(store.getPath()));
+  const pluginManager = new PluginManager(configDir);
+  pluginManager.reloadAll(config.providers).catch((err) => {
+    console.error('[plugin] 插件初始化失败:', err);
+  });
+  options?.registerCleanup?.(() => {
+    pluginManager.disposeAll().catch(() => {});
+  });
+
   printIntegrationGuide(config);
 
   const app = new Hono();
@@ -897,13 +910,13 @@ export function createApp(
 
   // 一次性注册所有已知协议类型的路由，handler 会在请求时动态检查配置
   for (const [routeType, entry] of Object.entries(ROUTE_REGISTRY)) {
-    const subApp = entry.create(routeType, store);
+    const subApp = entry.create(routeType, store, pluginManager);
     app.route(entry.mountPrefix, subApp);
     console.log(`已注册路由: ${routeType} -> ${entry.mountPrefix}`);
   }
 
   // 管理面板 API
-  app.route('/api', createAdminApiRoutes(store, options?.registerCleanup));
+  app.route('/api', createAdminApiRoutes(store, pluginManager, options?.registerCleanup));
   console.log('已注册管理 API: /api');
 
   // Swagger UI
