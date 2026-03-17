@@ -37,13 +37,20 @@ export default definition;
 
 ### 2. 在配置中引用
 
+插件支持三种加载方式：本地路径、远程 URL、npm 包名。
+
 ```json5
 {
   providers: {
     "my-provider": {
       // ...
       plugins: [
-        { "package": "./my-plugin.ts", "params": { "key": "value" } }
+        // 本地文件路径（支持 .js / .ts）
+        { "package": "./my-plugin.ts", "params": { "key": "value" } },
+        // 远程 URL（支持 .js / .ts）
+        { "package": "https://example.com/plugins/my-plugin.js" },
+        // npm 包名
+        { "package": "local-router-plugin-audit", "params": { "level": "info" } }
       ]
     }
   }
@@ -161,7 +168,7 @@ dispose(): void | Promise<void>
 ```
 服务启动 / config apply
   ↓
-import(package) → PluginDefinition
+import(package) / fetch(url) → PluginDefinition
   ↓
 definition.create(params) → Plugin 实例
   ↓
@@ -212,11 +219,41 @@ async onSSEResponse({ ctx }) {
 - **避免在 onError 中抛异常**：`onError` 本身的异常会被静默忽略
 - **加载失败不阻断**：单个插件加载失败只打印 console.error，不影响其他插件和 Provider
 
+## 远程 URL 插件
+
+支持通过 HTTP/HTTPS URL 加载远程插件，适用于团队共享插件、CDN 分发等场景。
+
+### 配置示例
+
+```json5
+{
+  plugins: [
+    { "package": "https://example.com/plugins/audit.js" },
+    { "package": "https://raw.githubusercontent.com/user/repo/main/plugin.ts" }
+  ]
+}
+```
+
+### 加载流程
+
+1. 通过 `fetch()` 下载远程文件
+2. 根据 URL 路径扩展名（`.ts`/`.js`/`.mjs`）推断文件类型
+3. 写入临时目录后通过 `import()` 加载（Bun 原生转译 TypeScript）
+4. 服务关闭或全量 dispose 时自动清理临时文件
+
+### 注意事项
+
+- **网络依赖**：服务启动和热重载时需要网络可达，下载失败视为加载失败（不影响其他插件）
+- **安全性**：请仅从可信来源加载远程插件，远程代码会在服务进程中执行
+- **热重载**：每次 reload 都会重新下载最新版本，不缓存旧内容
+- **TypeScript 支持**：远程 `.ts` 文件由 Bun 原生转译，无需预编译
+
 ## 热重载注意事项
 
 - 调用 `/api/config/apply` 会原子替换插件：先加载所有新插件，成功后一次性替换旧 map，旧实例延迟销毁
 - 如果新插件加载失败，apply 接口会在响应中返回 `pluginWarnings` 字段列出失败详情
 - 本地文件插件会追加时间戳参数绕过模块缓存
+- 远程 URL 插件每次 reload 都会重新下载，确保获取最新版本；旧临时文件在全部插件销毁时清理
 - **有状态插件**：在 `dispose` 中清理计时器、连接等资源
 - 热重载期间的 in-flight 请求使用旧插件实例，旧实例会延迟 5 秒后销毁以保护在途请求
 

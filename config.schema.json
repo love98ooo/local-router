@@ -269,15 +269,15 @@
     },
     "pluginConfig": {
       "type": "object",
-      "description": "单个插件的配置。package 指定 npm 包名或本地路径，params 为传递给 create() 的参数对象。",
+      "description": "单个插件的配置。package 指定 npm 包名、本地路径或远程 URL，params 为传递给 create() 的参数对象。",
       "additionalProperties": false,
       "required": ["package"],
       "properties": {
         "package": {
           "type": "string",
           "minLength": 1,
-          "description": "插件包名或本地路径。以 ./ 或 ../ 或 / 开头视为本地文件（相对于配置文件目录解析），否则作为 npm 包名通过 import() 加载。",
-          "examples": ["local-router-plugin-audit", "./plugins/content-filter.ts"]
+          "description": "插件包名、本地路径或远程 URL。以 ./ 或 ../ 或 / 开头视为本地文件（相对于配置文件目录解析）；以 http:// 或 https:// 开头视为远程 URL（运行时下载后加载）；否则作为 npm 包名通过 import() 加载。支持 .js 和 .ts 文件。",
+          "examples": ["local-router-plugin-audit", "./plugins/content-filter.ts", "https://example.com/plugins/my-plugin.js"]
         },
         "params": {
           "type": "object",

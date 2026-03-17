@@ -1,4 +1,6 @@
-import { resolve, dirname } from 'node:path';
+import { resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import type { PluginConfig, ProviderConfig } from './config';
 import type { Plugin, PluginDefinition } from './plugin';
 
@@ -17,10 +19,71 @@ function isLocalPath(pkg: string): boolean {
   );
 }
 
+function isRemoteUrl(pkg: string): boolean {
+  return pkg.startsWith('http://') || pkg.startsWith('https://');
+}
+
+/** 根据 URL 路径或 Content-Type 推断文件扩展名 */
+function inferExtension(url: string, contentType?: string | null): string {
+  const pathname = new URL(url).pathname;
+  if (pathname.endsWith('.ts') || pathname.endsWith('.tsx')) return '.ts';
+  if (pathname.endsWith('.mjs')) return '.mjs';
+  if (pathname.endsWith('.cjs')) return '.cjs';
+  if (contentType?.includes('typescript')) return '.ts';
+  return '.js';
+}
+
+/** 远程临时文件目录，进程退出时统一清理 */
+let remoteTmpDir: string | null = null;
+const remoteTmpFiles: string[] = [];
+
+async function ensureRemoteTmpDir(): Promise<string> {
+  if (!remoteTmpDir) {
+    remoteTmpDir = await mkdtemp(join(tmpdir(), 'local-router-plugins-'));
+  }
+  return remoteTmpDir;
+}
+
+/** 下载远程插件到临时文件并返回本地路径 */
+async function fetchRemotePlugin(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`下载远程插件失败: HTTP ${response.status} ${response.statusText} (${url})`);
+  }
+
+  const content = await response.text();
+  const ext = inferExtension(url, response.headers.get('content-type'));
+  const dir = await ensureRemoteTmpDir();
+  const fileName = `plugin_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+  const filePath = join(dir, fileName);
+
+  await writeFile(filePath, content, 'utf-8');
+  remoteTmpFiles.push(filePath);
+
+  return filePath;
+}
+
+/** 清理远程插件临时文件 */
+export async function cleanupRemoteTmpFiles(): Promise<void> {
+  if (remoteTmpDir) {
+    try {
+      await rm(remoteTmpDir, { recursive: true, force: true });
+    } catch {
+      // 静默忽略清理失败
+    }
+    remoteTmpDir = null;
+    remoteTmpFiles.length = 0;
+  }
+}
+
 async function importPlugin(pkg: string, configDir: string): Promise<PluginDefinition> {
   let modulePath: string;
 
-  if (isLocalPath(pkg)) {
+  if (isRemoteUrl(pkg)) {
+    // 远程 URL：下载到临时文件后 import（Bun 原生支持 .ts 转译）
+    const localPath = await fetchRemotePlugin(pkg);
+    modulePath = `${localPath}?t=${Date.now()}`;
+  } else if (isLocalPath(pkg)) {
     const absolutePath = resolve(configDir, pkg);
     // 追加 ?t=Date.now() 绕过 Bun 模块缓存，支持热重载
     modulePath = `${absolutePath}?t=${Date.now()}`;
@@ -179,6 +242,7 @@ export class PluginManager {
     }
     this.plugins.clear();
     await this.disposePluginList(allPlugins);
+    await cleanupRemoteTmpFiles();
   }
 
   private async disposePluginList(plugins: LoadedPlugin[]): Promise<void> {

@@ -20,7 +20,8 @@ local-router 支持通过插件扩展请求/响应的处理流程。插件基于
       apiKey: "sk-xxx",
       plugins: [
         { "package": "local-router-plugin-audit", "params": { "level": "info" } },
-        { "package": "./plugins/content-filter.ts", "params": { "keywords": ["blocked"] } }
+        { "package": "./plugins/content-filter.ts", "params": { "keywords": ["blocked"] } },
+        { "package": "https://example.com/plugins/my-plugin.js" }
       ],
       models: { "gpt-4o": {} }
     }
@@ -30,8 +31,11 @@ local-router 支持通过插件扩展请求/响应的处理流程。插件基于
 
 ### 加载策略
 
+- `package` 以 `http://` 或 `https://` 开头：视为远程 URL，运行时下载到临时目录后加载
 - `package` 以 `./`、`../`、`/` 开头：视为本地文件路径（相对于配置文件目录解析）
 - 其他值：作为 npm 包名通过 `import()` 加载
+
+> 本地路径和远程 URL 均支持 `.js` 和 `.ts` 文件（Bun 原生转译 TypeScript）。
 
 ### 执行顺序
 
@@ -80,6 +84,7 @@ interface PluginContext {
 
 - 插件 handler 抛异常时：catch 后调用该插件的 `onError`，然后继续后续插件（优雅降级）
 - 单个插件加载失败仅打印警告，不影响 provider 正常工作
+- 远程 URL 插件下载失败（网络错误、HTTP 非 200）视为加载失败，同样仅打印警告
 
 ## 热重载
 

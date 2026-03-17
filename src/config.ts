@@ -76,7 +76,7 @@ export interface ModelCapabilities {
 }
 
 export interface PluginConfig {
-  /** npm 包名 或 本地路径（./relative 或 /absolute） */
+  /** npm 包名、本地路径（./relative 或 /absolute）或远程 URL（http:// 或 https://） */
   package: string;
   /** 传递给 create() 的参数 */
   params?: Record<string, unknown>;
