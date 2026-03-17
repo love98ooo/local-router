@@ -268,6 +268,10 @@ export function LogDetailPage() {
     );
   }
 
+  const hasPlugins = Boolean(
+    detail.plugins && (detail.plugins.request?.length || detail.plugins.response?.length)
+  );
+
   return (
     <Tabs defaultValue="overview" className="space-y-2">
       <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background px-3 py-2">
@@ -283,6 +287,7 @@ export function LogDetailPage() {
         <TabsList variant="line" className="h-auto shrink-0">
           <TabsTrigger value="overview">概览</TabsTrigger>
           <TabsTrigger value="request-response">请求 / 响应</TabsTrigger>
+          {hasPlugins ? <TabsTrigger value="plugins">插件</TabsTrigger> : null}
           <TabsTrigger value="session-tracing">会话 / 追踪</TabsTrigger>
           <TabsTrigger value="raw">Raw</TabsTrigger>
         </TabsList>
@@ -388,50 +393,17 @@ export function LogDetailPage() {
             />
           </div>
         </section>
-
-        <PluginPipelineSection detail={detail} />
       </TabsContent>
 
       <TabsContent value="request-response" className="mt-0 space-y-4">
-        <section className="rounded-lg border bg-background">
-          <div className="border-b px-3 py-3">
-            <h3 className="text-base font-semibold">Request</h3>
-          </div>
-          <div className="space-y-3 px-3 py-3">
-            <div className="grid gap-2 text-sm sm:grid-cols-3">
-              <MetaItem label="method" value={detail.request.method} />
-              <MetaItem label="path" value={detail.request.path} mono />
-              <MetaItem label="content-type" value={detail.request.contentType ?? '-'} mono />
-            </div>
-            <HeadersTableBlock title="headers" headers={detail.request.requestHeaders} />
-            <JsonBlock
-              title="body"
-              value={detail.request.requestBody}
-              contentType={detail.request.contentType}
-              emptyText="无请求 body 或未采集。"
-            />
-          </div>
-        </section>
-
-        <section className="rounded-lg border bg-background">
-          <div className="border-b px-3 py-3">
-            <h3 className="text-base font-semibold">Response</h3>
-          </div>
-          <div className="space-y-3 px-3 py-3">
-            <div className="grid gap-2 text-sm sm:grid-cols-2">
-              <MetaItem label="upstream_status" value={String(detail.response.upstreamStatus)} />
-              <MetaItem label="content-type" value={detail.response.contentType ?? '-'} mono />
-            </div>
-            <HeadersTableBlock title="headers" headers={detail.response.responseHeaders} />
-            <JsonBlock
-              title="body"
-              value={detail.response.responseBody}
-              contentType={detail.response.contentType}
-              emptyText="无响应 body 或未采集。"
-            />
-          </div>
-        </section>
+        <RequestResponseFlowSections detail={detail} />
       </TabsContent>
+
+      {hasPlugins ? (
+        <TabsContent value="plugins" className="mt-0 space-y-4">
+          <PluginPipelineSection detail={detail} />
+        </TabsContent>
+      ) : null}
 
       <TabsContent value="session-tracing" className="mt-0 space-y-4">
         {parsedChatHistory ? <ChatHistoryCard parsed={parsedChatHistory} /> : null}
@@ -482,6 +454,319 @@ export function LogDetailPage() {
   );
 }
 
+function FlowStepHeader({
+  step,
+  title,
+  description,
+}: {
+  step: number;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 border-b px-3 py-3">
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+        {step}
+      </div>
+      <div>
+        <h3 className="text-base font-semibold">{title}</h3>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+interface FlowStep {
+  key: string;
+  step: number;
+  title: string;
+  shortTitle: string;
+  description: string;
+  tag: 'request' | 'response';
+  connector?: string;
+}
+
+function RequestResponseFlowSections({ detail }: { detail: LogEventDetail }) {
+  const plugins = detail.plugins;
+  const hasPlugins = Boolean(plugins && (plugins.request?.length || plugins.response?.length));
+  const [activeStep, setActiveStep] = useState(1);
+
+  const userRequestBody = restoreLocalRouterBody(detail);
+  const providerRequestBody = plugins?.requestBodyAfterPlugins ?? detail.request.requestBody;
+  const providerRequestUrl = plugins?.requestUrlAfterPlugins ?? detail.upstream.targetUrl;
+  const providerResponseBody = plugins?.responseBodyBeforePlugins ?? detail.response.responseBody;
+  const finalResponseBody = detail.response.responseBody;
+
+  const steps: FlowStep[] = [
+    {
+      key: 'user-request',
+      step: 1,
+      title: '用户请求',
+      shortTitle: '用户请求',
+      description: '用户发送给 local-router 的原始请求（插件处理前）',
+      tag: 'request',
+      connector: hasPlugins
+        ? `插件: ${plugins?.request?.map((p) => p.name).join(' → ') ?? '-'}`
+        : undefined,
+    },
+    {
+      key: 'provider-request',
+      step: 2,
+      title: '发送给 Provider 的请求',
+      shortTitle: 'Provider 请求',
+      description: `local-router 插件处理后最终发给 ${detail.summary.provider} 的请求`,
+      tag: 'request',
+      connector: `${detail.summary.provider} 处理`,
+    },
+    {
+      key: 'provider-response',
+      step: 3,
+      title: 'Provider 响应',
+      shortTitle: 'Provider 响应',
+      description: `${detail.summary.provider} 返回给 local-router 的原始响应（插件处理前）`,
+      tag: 'response',
+      connector: hasPlugins
+        ? `插件: ${plugins?.response ? [...plugins.response].reverse().map((p) => p.name).join(' → ') : '-'}`
+        : undefined,
+    },
+    {
+      key: 'final-response',
+      step: 4,
+      title: '最终响应',
+      shortTitle: '最终响应',
+      description: 'local-router 插件处理后最终返回给用户的响应',
+      tag: 'response',
+    },
+  ];
+
+  return (
+    <div className="space-y-3 md:space-y-0">
+      {/* Mobile step switcher */}
+      <div className="flex gap-1 md:hidden">
+        {steps.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => setActiveStep(s.step)}
+            className={cn(
+              'flex-1 rounded-md border px-2 py-1.5 text-center text-xs transition-colors',
+              activeStep === s.step
+                ? 'border-primary bg-primary/10 font-medium text-foreground'
+                : 'text-muted-foreground hover:bg-muted/50'
+            )}
+          >
+            <div className="font-medium">{s.step}</div>
+            <div className="mt-0.5 truncate text-[10px]">{s.shortTitle}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-5">
+        {/* Left timeline - desktop only */}
+        <div className="hidden w-44 shrink-0 md:block">
+          <div className="sticky top-4 rounded-lg border bg-background px-2 py-3">
+            <div className="relative flex flex-col">
+              {steps.map((s, i) => (
+                <div key={s.key} className="flex flex-col">
+                  {/* Step node */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveStep(s.step)}
+                    className={cn(
+                      'group relative flex items-start gap-3 rounded-lg px-2.5 py-2.5 text-left transition-all',
+                      activeStep === s.step
+                        ? 'bg-primary/8 shadow-sm ring-1 ring-primary/20'
+                        : 'hover:bg-muted/60'
+                    )}
+                  >
+                    {/* Circle */}
+                    <div
+                      className={cn(
+                        'relative z-10 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all',
+                        activeStep === s.step
+                          ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
+                          : 'border-2 bg-background text-muted-foreground group-hover:border-primary/40 group-hover:text-foreground'
+                      )}
+                    >
+                      {s.step}
+                    </div>
+                    {/* Label */}
+                    <div className="min-w-0 pt-0.5">
+                      <div
+                        className={cn(
+                          'text-sm font-medium leading-tight transition-colors',
+                          activeStep === s.step ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
+                        )}
+                      >
+                        {s.shortTitle}
+                      </div>
+                      <div className={cn(
+                        'mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none',
+                        s.tag === 'request'
+                          ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                          : 'bg-green-500/10 text-green-600 dark:text-green-400'
+                      )}>
+                        {s.tag === 'request' ? 'REQUEST' : 'RESPONSE'}
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Connector */}
+                  {i < steps.length - 1 && (
+                    <div className="flex items-stretch gap-3 px-2.5">
+                      <div className="flex w-7 justify-center">
+                        <div
+                          className={cn(
+                            'w-px',
+                            /* highlight the segment between active and next */
+                            activeStep === s.step || activeStep === steps[i + 1].step
+                              ? 'bg-primary/40'
+                              : 'bg-border'
+                          )}
+                          style={{ minHeight: '40px' }}
+                        />
+                      </div>
+                      <div className="flex items-center py-2">
+                        {s.connector ? (
+                          <div className="rounded-md border bg-muted/40 px-2 py-1 text-[10px] leading-snug text-muted-foreground">
+                            {s.connector}
+                          </div>
+                        ) : (
+                          <div className="h-px" />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right content */}
+        <div className="min-w-0 flex-1">
+        {activeStep === 1 && (
+          <section className="rounded-lg border bg-background">
+            <FlowStepHeader
+              step={1}
+              title="用户请求"
+              description="用户发送给 local-router 的原始请求（插件处理前）"
+            />
+            <div className="space-y-3 px-3 py-3">
+              <div className="grid gap-2 text-sm sm:grid-cols-3">
+                <MetaItem label="method" value={detail.request.method} />
+                <MetaItem label="path" value={detail.request.path} mono />
+                <MetaItem label="content-type" value={detail.request.contentType ?? '-'} mono />
+              </div>
+              <HeadersTableBlock title="headers" headers={detail.request.requestHeaders} />
+              <JsonBlock
+                title="body"
+                value={userRequestBody}
+                contentType={detail.request.contentType}
+                emptyText="无请求 body 或未采集。"
+              />
+            </div>
+          </section>
+        )}
+
+        {activeStep === 2 && (
+          <section className="rounded-lg border bg-background">
+            <FlowStepHeader
+              step={2}
+              title="发送给 Provider 的请求"
+              description={`local-router 插件处理后最终发给 ${detail.summary.provider} 的请求`}
+            />
+            <div className="space-y-3 px-3 py-3">
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <MetaItem label="target_url" value={providerRequestUrl} mono />
+                <MetaItem label="provider" value={detail.summary.provider} />
+              </div>
+              <JsonBlock
+                title="body"
+                value={providerRequestBody}
+                contentType={detail.request.contentType}
+                emptyText="无请求 body 或未采集。"
+              />
+              {hasPlugins && plugins?.requestBodyAfterPlugins !== undefined ? (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+                  插件已修改请求 body，此处展示的是修改后的内容。
+                </div>
+              ) : !hasPlugins ? (
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  无插件处理，请求内容与用户请求一致（model 已由路由改写）。
+                </div>
+              ) : null}
+            </div>
+          </section>
+        )}
+
+        {activeStep === 3 && (
+          <section className="rounded-lg border bg-background">
+            <FlowStepHeader
+              step={3}
+              title="Provider 响应"
+              description={`${detail.summary.provider} 返回给 local-router 的原始响应（插件处理前）`}
+            />
+            <div className="space-y-3 px-3 py-3">
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <MetaItem label="upstream_status" value={String(detail.response.upstreamStatus)} />
+                <MetaItem label="content-type" value={detail.response.contentType ?? '-'} mono />
+              </div>
+              <HeadersTableBlock title="headers" headers={detail.response.responseHeaders} />
+              <JsonBlock
+                title="body"
+                value={providerResponseBody}
+                contentType={detail.response.contentType}
+                emptyText={
+                  detail.upstream.isStream
+                    ? '流式响应，请在「会话 / 追踪」标签页查看 stream 内容。'
+                    : '无响应 body 或未采集。'
+                }
+              />
+            </div>
+          </section>
+        )}
+
+        {activeStep === 4 && (
+          <section className="rounded-lg border bg-background">
+            <FlowStepHeader
+              step={4}
+              title="最终响应"
+              description="local-router 插件处理后最终返回给用户的响应"
+            />
+            <div className="space-y-3 px-3 py-3">
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <MetaItem label="status" value={String(detail.response.upstreamStatus)} />
+                <MetaItem label="content-type" value={detail.response.contentType ?? '-'} mono />
+              </div>
+              <JsonBlock
+                title="body"
+                value={finalResponseBody}
+                contentType={detail.response.contentType}
+                emptyText={
+                  detail.upstream.isStream
+                    ? '流式响应，请在「会话 / 追踪」标签页查看 stream 内容。'
+                    : '无响应 body 或未采集。'
+                }
+              />
+              {hasPlugins && plugins?.responseBodyAfterPlugins !== undefined ? (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+                  插件已修改响应 body，此处展示的是修改后的最终内容。
+                </div>
+              ) : !hasPlugins ? (
+                <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  无插件处理，响应内容与 Provider 响应一致。
+                </div>
+              ) : null}
+            </div>
+          </section>
+        )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PluginPipelineSection({ detail }: { detail: LogEventDetail }) {
   const plugins = detail.plugins;
 
@@ -490,76 +775,97 @@ function PluginPipelineSection({ detail }: { detail: LogEventDetail }) {
   }
 
   return (
-    <section className="rounded-lg border bg-background">
-      <div className="border-b px-3 py-3">
-        <h3 className="text-base font-semibold">插件管线</h3>
-        <p className="text-sm text-muted-foreground">
-          请求/响应经过的插件处理链路（洋葱模型）
-        </p>
-      </div>
-      <div className="space-y-3 px-3 py-3">
-        {plugins.request && plugins.request.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">请求阶段（正序）</div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Badge variant="outline" className="text-xs">用户请求</Badge>
-              {plugins.request.map((p, i) => (
-                <div key={`req-${p.name}-${i}`} className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">→</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {p.name}
-                  </Badge>
+    <>
+      <section className="rounded-lg border bg-background">
+        <div className="border-b px-3 py-3">
+          <h3 className="text-base font-semibold">插件管线</h3>
+          <p className="text-sm text-muted-foreground">
+            请求/响应经过的插件处理链路（洋葱模型）
+          </p>
+        </div>
+        <div className="space-y-3 px-3 py-3">
+          {plugins.request && plugins.request.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">请求阶段（正序）</div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline" className="text-xs">用户请求</Badge>
+                {plugins.request.map((p, i) => (
+                  <div key={`req-${p.name}-${i}`} className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">→</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {p.name}
+                    </Badge>
+                  </div>
+                ))}
+                <span className="text-muted-foreground">→</span>
+                <Badge variant="outline" className="text-xs">Provider 请求</Badge>
+              </div>
+            </div>
+          )}
+
+          {plugins.response && plugins.response.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-muted-foreground">响应阶段（逆序）</div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline" className="text-xs">Provider 响应</Badge>
+                {[...plugins.response].reverse().map((p, i) => (
+                  <div key={`res-${p.name}-${i}`} className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">→</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {p.name}
+                    </Badge>
+                  </div>
+                ))}
+                <span className="text-muted-foreground">→</span>
+                <Badge variant="outline" className="text-xs">用户响应</Badge>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-lg border bg-background">
+        <div className="border-b px-3 py-3">
+          <h3 className="text-base font-semibold">插件详情</h3>
+          <p className="text-sm text-muted-foreground">各插件的包名与参数配置</p>
+        </div>
+        <div className="space-y-3 px-3 py-3">
+          {(plugins.request ?? plugins.response ?? []).map((p, i) => (
+            <div key={`detail-${p.name}-${i}`} className="rounded-md border bg-muted/20 p-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs">{p.name}</Badge>
+                <span className="font-mono text-xs text-muted-foreground">{p.package}</span>
+              </div>
+              {Object.keys(p.params).length > 0 && (
+                <div className="mt-2">
+                  <div className="text-xs text-muted-foreground">params</div>
+                  <pre className="mt-1 rounded-md border bg-muted/30 p-2 text-xs">
+                    {JSON.stringify(p.params, null, 2)}
+                  </pre>
                 </div>
-              ))}
-              <span className="text-muted-foreground">→</span>
-              <Badge variant="outline" className="text-xs">Provider 请求</Badge>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {plugins.requestUrlAfterPlugins && (
+        <section className="rounded-lg border bg-background">
+          <div className="border-b px-3 py-3">
+            <h3 className="text-base font-semibold">插件修改记录</h3>
+            <p className="text-sm text-muted-foreground">插件对请求/响应的修改</p>
+          </div>
+          <div className="space-y-3 px-3 py-3">
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">插件处理后 URL</div>
+              <div className="rounded-md border bg-muted/30 p-2 font-mono text-xs break-all">
+                {plugins.requestUrlAfterPlugins}
+              </div>
             </div>
           </div>
-        )}
-
-        {plugins.response && plugins.response.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">响应阶段（逆序）</div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Badge variant="outline" className="text-xs">Provider 响应</Badge>
-              {[...plugins.response].reverse().map((p, i) => (
-                <div key={`res-${p.name}-${i}`} className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground">→</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {p.name}
-                  </Badge>
-                </div>
-              ))}
-              <span className="text-muted-foreground">→</span>
-              <Badge variant="outline" className="text-xs">用户响应</Badge>
-            </div>
-          </div>
-        )}
-
-        {plugins.requestUrlAfterPlugins && (
-          <div className="space-y-1">
-            <div className="text-xs text-muted-foreground">插件处理后 URL</div>
-            <div className="rounded-md border bg-muted/30 p-2 font-mono text-xs break-all">
-              {plugins.requestUrlAfterPlugins}
-            </div>
-          </div>
-        )}
-
-        {plugins.requestBodyAfterPlugins !== undefined && (
-          <JsonBlock
-            title="插件处理后请求 body"
-            value={plugins.requestBodyAfterPlugins}
-          />
-        )}
-
-        {plugins.responseBodyAfterPlugins !== undefined && (
-          <JsonBlock
-            title="插件处理后响应 body"
-            value={plugins.responseBodyAfterPlugins}
-          />
-        )}
-      </div>
-    </section>
+        </section>
+      )}
+    </>
   );
 }
 

@@ -132,6 +132,7 @@ export interface LogEventDetail {
     response?: Array<{ name: string; package: string; params: Record<string, unknown> }>;
     requestBodyAfterPlugins?: unknown;
     requestUrlAfterPlugins?: string;
+    responseBodyBeforePlugins?: string;
     responseBodyAfterPlugins?: string;
   };
   rawEvent: unknown;
@@ -551,6 +552,7 @@ async function buildLogEventDetail(
     event.plugins_response ||
     event.request_body_after_plugins !== undefined ||
     event.request_url_after_plugins !== undefined ||
+    event.response_body_before_plugins !== undefined ||
     event.response_body_after_plugins !== undefined;
 
   const pluginsSection = hasPluginData
@@ -559,6 +561,7 @@ async function buildLogEventDetail(
         response: event.plugins_response,
         requestBodyAfterPlugins: event.request_body_after_plugins,
         requestUrlAfterPlugins: event.request_url_after_plugins,
+        responseBodyBeforePlugins: event.response_body_before_plugins,
         responseBodyAfterPlugins: event.response_body_after_plugins,
       }
     : undefined;

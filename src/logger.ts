@@ -38,6 +38,7 @@ export interface LogEvent {
   request_body_after_plugins?: unknown;
   request_url_after_plugins?: string;
   plugins_response?: PluginPhaseLog[];
+  response_body_before_plugins?: string;
   response_body_after_plugins?: string;
 }
 

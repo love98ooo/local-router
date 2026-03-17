@@ -179,7 +179,7 @@ function SidebarGroupContent({
 function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   return (
     <ul
-      className={cn("flex w-full min-w-0 flex-col gap-1.5", className)}
+      className={cn("flex w-full min-w-0 flex-col gap-2", className)}
       {...props}
     />
   );

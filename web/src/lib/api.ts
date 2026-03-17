@@ -290,6 +290,7 @@ export interface LogEventDetail {
     response?: Array<{ name: string; package: string; params: Record<string, unknown> }>;
     requestBodyAfterPlugins?: unknown;
     requestUrlAfterPlugins?: string;
+    responseBodyBeforePlugins?: string;
     responseBodyAfterPlugins?: string;
   };
   rawEvent: unknown;

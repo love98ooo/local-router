@@ -347,6 +347,9 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
       pluginLogOverrides.plugins_response = pluginConfigs;
     }
     if (result.body !== responseText) {
+      if (shouldLog && logger?.bodyPolicy !== 'off') {
+        pluginLogOverrides.response_body_before_plugins = responseText;
+      }
       pluginLogOverrides.response_body_after_plugins = result.body;
     }
     responseStatus = result.status;
