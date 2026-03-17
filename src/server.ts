@@ -14,7 +14,7 @@ export interface RunningServer {
   stop: () => Promise<void>;
 }
 
-const DEFAULT_IDLE_TIMEOUT_SECONDS = 600;
+const DEFAULT_IDLE_TIMEOUT_SECONDS = 0;
 
 function resolveIdleTimeoutSeconds(explicit?: number): number {
   if (typeof explicit === 'number' && Number.isFinite(explicit) && explicit >= 0) {
