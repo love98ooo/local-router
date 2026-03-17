@@ -880,7 +880,22 @@ function MetaItem({
 }) {
   return (
     <div className="rounded-md border bg-muted/20 px-3 py-2">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>{label}</span>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          onClick={async () => {
+            await navigator.clipboard.writeText(value);
+            toast.success(`已复制 ${label}`);
+          }}
+          aria-label={`复制 ${label}`}
+          title={`复制 ${label}`}
+        >
+          <Copy className="h-3 w-3" />
+        </Button>
+      </div>
       <div className={`mt-1 break-all ${mono ? 'font-mono text-xs' : 'text-sm'}`}>{value}</div>
     </div>
   );
@@ -897,7 +912,22 @@ function FlowPill({
 }) {
   return (
     <div className="rounded-md border bg-background/90 px-2 py-1">
-      <div className="text-[11px] leading-4 text-muted-foreground">{label}</div>
+      <div className="flex items-center justify-between gap-1 text-[11px] leading-4 text-muted-foreground">
+        <span>{label}</span>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          onClick={async () => {
+            await navigator.clipboard.writeText(value);
+            toast.success(`已复制 ${label}`);
+          }}
+          aria-label={`复制 ${label}`}
+          title={`复制 ${label}`}
+        >
+          <Copy className="h-3 w-3" />
+        </Button>
+      </div>
       <div className={`mt-0.5 break-all text-xs ${mono ? 'font-mono' : ''}`}>{value}</div>
     </div>
   );
@@ -1027,7 +1057,7 @@ function StreamContentBlock({
     return (
       <div className="space-y-1">
         {header}
-        <pre className="max-h-[320px] overflow-auto rounded-md border bg-muted/30 p-3 text-xs">
+        <pre className="rounded-md border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all">
           {emptyText ?? '-'}
         </pre>
       </div>
@@ -1037,7 +1067,7 @@ function StreamContentBlock({
   return (
     <div className="space-y-1">
       {header}
-      <div className="max-h-[420px] space-y-2 overflow-auto rounded-md border bg-muted/30 p-3">
+      <div className="space-y-2 rounded-md border bg-muted/30 p-3">
         {lines.map((line) => (
           <div
             key={`${line.lineNo}-${line.type}`}
@@ -1046,7 +1076,8 @@ function StreamContentBlock({
             <div className="text-[11px] text-muted-foreground">line {line.lineNo}</div>
             <StructuredDataBlock
               value={line.type === 'json' ? line.value : line.value}
-              className="max-h-[280px] bg-muted/40"
+              className="bg-muted/40"
+              noScroll
             />
           </div>
         ))}
@@ -1060,11 +1091,13 @@ function StructuredDataBlock({
   contentType,
   emptyText,
   className,
+  noScroll = false,
 }: {
   value: unknown;
   contentType?: string | null;
   emptyText?: string;
   className?: string;
+  noScroll?: boolean;
 }) {
   const parsed = useMemo(() => parseJsonCandidate(value, contentType), [contentType, value]);
 
@@ -1082,7 +1115,9 @@ function StructuredDataBlock({
     return (
       <div
         className={cn(
-          'max-h-[320px] overflow-auto rounded-md border bg-muted/20 p-3 text-xs',
+          noScroll
+            ? 'rounded-md border bg-muted/20 p-3 text-xs'
+            : 'max-h-[320px] overflow-auto rounded-md border bg-muted/20 p-3 text-xs',
           className
         )}
       >
@@ -1090,7 +1125,7 @@ function StructuredDataBlock({
           value={parsed.value as object}
           displayDataTypes={false}
           displayObjectSize={false}
-          enableClipboard={false}
+          enableClipboard={true}
           shortenTextAfterLength={0}
           shouldExpandNodeInitially={(_, { level }) => level < 2}
           style={JSON_VIEW_STYLE}
@@ -1107,7 +1142,9 @@ function StructuredDataBlock({
   return (
     <pre
       className={cn(
-        'max-h-[320px] overflow-auto rounded-md border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all',
+        noScroll
+          ? 'rounded-md border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all'
+          : 'max-h-[320px] overflow-auto rounded-md border bg-muted/30 p-3 text-xs whitespace-pre-wrap break-all',
         className
       )}
     >
@@ -1127,9 +1164,33 @@ function JsonBlock({
   contentType?: string | null;
   emptyText?: string;
 }) {
+  const copyText = useMemo(() => {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    const json = JSON.stringify(value, null, 2);
+    return json ?? String(value);
+  }, [value]);
+
   return (
     <div className="space-y-1">
-      <div className="text-xs text-muted-foreground">{title}</div>
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>{title}</span>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          disabled={!copyText}
+          onClick={async () => {
+            if (!copyText) return;
+            await navigator.clipboard.writeText(copyText);
+            toast.success(`已复制 ${title}`);
+          }}
+          aria-label={`复制 ${title}`}
+          title={`复制 ${title}`}
+        >
+          <Copy className="h-3 w-3" />
+        </Button>
+      </div>
       <StructuredDataBlock value={value} contentType={contentType} emptyText={emptyText} />
     </div>
   );
@@ -1167,6 +1228,21 @@ function HeadersTableBlock({
                   </TableCell>
                   <TableCell className="align-top font-mono whitespace-normal break-all">
                     {value}
+                  </TableCell>
+                  <TableCell className="w-10 align-top text-right">
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(`${key}: ${value}`);
+                        toast.success(`已复制 ${key}`);
+                      }}
+                      aria-label={`复制 ${key}`}
+                      title={`复制 ${key}`}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
