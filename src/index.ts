@@ -33,6 +33,14 @@ import { createOpenaiCompletionsRoutes } from './routes/openai-completions';
 import { createOpenaiResponsesRoutes } from './routes/openai-responses';
 import { getBundledSchemaPath, getBundledWebRoot } from './runtime-assets';
 import { validateConfigOrThrow } from './config-validate';
+import {
+  buildImportResult,
+  ccsDbExists,
+  convertCCSProvider,
+  isAlreadyImported,
+  mergeImportIntoConfig,
+  readCCSProviders,
+} from './ccs-import';
 
 type CleanupFn = () => void;
 
@@ -782,6 +790,95 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
       status: 200,
       headers: c.res.headers,
     });
+  });
+
+  // --- CCS 导入 ---
+  api.get('/ccs/providers', (c) => {
+    const dbPath = c.req.query('db');
+    if (!ccsDbExists(dbPath)) {
+      return c.json({ providers: [], dbExists: false });
+    }
+
+    try {
+      const config = store.get();
+      const ccsProviders = readCCSProviders(dbPath);
+      const items = ccsProviders.map((p) => {
+        const converted = convertCCSProvider(p);
+        return {
+          id: p.id,
+          name: p.name,
+          base: converted?.base ?? '',
+          type: converted?.type ?? 'anthropic-messages',
+          models: converted ? Object.keys(converted.models) : [],
+          isCurrent: p.isCurrent,
+          alreadyImported: isAlreadyImported(config, p),
+        };
+      });
+      return c.json({ providers: items, dbExists: true });
+    } catch (err) {
+      return c.json(
+        { error: `读取 CCS 数据库失败: ${err instanceof Error ? err.message : String(err)}` },
+        500
+      );
+    }
+  });
+
+  api.post('/ccs/import', async (c) => {
+    let body: { providerIds?: string[]; db?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: '请求体不是合法 JSON' }, 400);
+    }
+
+    if (!Array.isArray(body.providerIds) || body.providerIds.length === 0) {
+      return c.json({ error: 'providerIds 必须是非空数组' }, 400);
+    }
+
+    const dbPath = body.db;
+    if (!ccsDbExists(dbPath)) {
+      return c.json({ error: 'CCS 数据库不存在' }, 404);
+    }
+
+    try {
+      const allProviders = readCCSProviders(dbPath);
+      const idSet = new Set(body.providerIds);
+      const selected = allProviders.filter((p) => idSet.has(p.id));
+
+      if (selected.length === 0) {
+        return c.json({ error: '未找到指定的供应商' }, 404);
+      }
+
+      const config = store.get();
+
+      // Filter out already-imported providers
+      const notYetImported = selected.filter((p) => !isAlreadyImported(config, p));
+      if (notYetImported.length === 0) {
+        return c.json({ imported: [], skipped: selected.map((p) => p.name) });
+      }
+
+      const existingKeys = new Set(Object.keys(config.providers));
+      const importResult = buildImportResult(notYetImported, existingKeys);
+
+      // Deep clone to avoid mutating the shared config object
+      const clonedConfig: AppConfig = JSON.parse(JSON.stringify(config));
+      const { config: newConfig, imported, skipped } = mergeImportIntoConfig(
+        clonedConfig,
+        importResult
+      );
+
+      if (imported.length > 0) {
+        store.save(newConfig);
+        store.reload();
+      }
+
+      return c.json({ imported, skipped });
+    } catch (err) {
+      return c.json(
+        { error: `导入失败: ${err instanceof Error ? err.message : String(err)}` },
+        500
+      );
+    }
   });
 
   return api;
