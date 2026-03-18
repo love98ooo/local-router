@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, basename } from 'node:path';
 import { Database } from 'bun:sqlite';
 import type { AppConfig, ModelCapabilities, ProviderConfig, ProviderType, RouteTarget } from './config';
 
@@ -27,6 +27,10 @@ export interface ImportResult {
 }
 
 const DEFAULT_CCS_DB_PATH = join(homedir(), '.cc-switch', 'cc-switch.db');
+
+function validateString(value: unknown, defaultValue = ''): string {
+  return typeof value === 'string' ? value : defaultValue;
+}
 
 function toKebabCase(name: string): string {
   return name
@@ -85,17 +89,59 @@ export function getDefaultCCSDbPath(): string {
 }
 
 export function ccsDbExists(dbPath?: string): boolean {
-  return existsSync(dbPath ?? DEFAULT_CCS_DB_PATH);
+  const path = dbPath ? resolve(dbPath) : DEFAULT_CCS_DB_PATH;
+
+  // Security check: ensure path is in allowed directories
+  const homeDir = homedir();
+  const isAllowedPath = path.startsWith(homeDir) ||
+                        path.startsWith('/tmp/') ||
+                        path.startsWith('/private/tmp/');
+
+  if (!isAllowedPath) {
+    return false;
+  }
+
+  // Ensure file extension is .db or .sqlite
+  const ext = basename(path).split('.').pop()?.toLowerCase();
+  if (ext !== 'db' && ext !== 'sqlite') {
+    return false;
+  }
+
+  return existsSync(path);
 }
 
 export function readCCSProviders(dbPath?: string): CCSProvider[] {
-  const path = dbPath ?? DEFAULT_CCS_DB_PATH;
+  let path: string;
+
+  if (dbPath) {
+    path = resolve(dbPath);
+    const homeDir = homedir();
+
+    // Security check: ensure path is in allowed directories
+    const isAllowedPath = path.startsWith(homeDir) ||
+                          path.startsWith('/tmp/') ||
+                          path.startsWith('/private/tmp/');
+
+    if (!isAllowedPath) {
+      throw new Error('数据库路径必须在用户目录或临时目录下');
+    }
+
+    // Ensure file extension is .db or .sqlite
+    const ext = basename(path).split('.').pop()?.toLowerCase();
+    if (ext !== 'db' && ext !== 'sqlite') {
+      throw new Error('数据库文件必须是 .db 或 .sqlite 格式');
+    }
+  } else {
+    path = DEFAULT_CCS_DB_PATH;
+  }
+
   if (!existsSync(path)) {
     throw new Error(`CCS 数据库不存在: ${path}`);
   }
 
-  const db = new Database(path, { readonly: true });
+  let db: Database | null = null;
   try {
+    db = new Database(path, { readonly: true });
     const rows = db
       .query<
         { id: string; name: string; settings_config: string; meta: string | null; is_current: number },
@@ -111,14 +157,20 @@ export function readCCSProviders(dbPath?: string): CCSProvider[] {
       isCurrent: row.is_current === 1,
     }));
   } finally {
-    db.close();
+    if (db) {
+      try {
+        db.close();
+      } catch (err) {
+        console.error('关闭数据库连接失败:', err);
+      }
+    }
   }
 }
 
 export function convertCCSProvider(ccs: CCSProvider): ImportedProvider | null {
   const env = (ccs.settingsConfig?.env ?? {}) as Record<string, unknown>;
-  const base = (env.ANTHROPIC_BASE_URL as string) ?? '';
-  const apiKey = ((env.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_API_KEY ?? ccs.settingsConfig?.apiKey) as string) ?? '';
+  const base = validateString(env.ANTHROPIC_BASE_URL);
+  const apiKey = validateString(env.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_API_KEY ?? ccs.settingsConfig?.apiKey);
 
   if (!base.trim()) return null;
 
@@ -211,8 +263,8 @@ export function isAlreadyImported(
   ccs: CCSProvider
 ): boolean {
   const env = (ccs.settingsConfig?.env ?? {}) as Record<string, unknown>;
-  const base = (env.ANTHROPIC_BASE_URL as string) ?? '';
-  const apiKey = ((env.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_API_KEY ?? ccs.settingsConfig?.apiKey) as string) ?? '';
+  const base = validateString(env.ANTHROPIC_BASE_URL);
+  const apiKey = validateString(env.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_API_KEY ?? ccs.settingsConfig?.apiKey);
 
   if (!base.trim()) return false;
 

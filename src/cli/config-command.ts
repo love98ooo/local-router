@@ -470,10 +470,11 @@ async function handleImportCCS(args: string[]): Promise<void> {
         return;
       }
       if (trimmed !== '*') {
-        const indices = trimmed.split(',').map((s) => Number.parseInt(s.trim(), 10) - 1);
-        selected = indices
-          .filter((i) => Number.isFinite(i) && i >= 0 && i < ccsProviders.length)
-          .map((i) => ccsProviders[i]!);
+        const indices = trimmed
+          .split(',')
+          .map((s) => Number.parseInt(s.trim(), 10) - 1)
+          .filter((i) => !Number.isNaN(i) && i >= 0 && i < ccsProviders.length);
+        selected = indices.map((i) => ccsProviders[i]!);
         if (selected.length === 0) {
           console.log('未选择有效的供应商');
           return;
