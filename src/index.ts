@@ -44,6 +44,50 @@ import {
 
 type CleanupFn = () => void;
 
+// Simple in-memory rate limiter
+interface RateLimitEntry {
+  count: number;
+  resetTime: number;
+}
+
+const rateLimitStore = new Map<string, RateLimitEntry>();
+
+function checkRateLimit(
+  key: string,
+  maxRequests: number,
+  windowMs: number
+): { allowed: boolean; remaining: number; resetTime: number } {
+  const now = Date.now();
+  const entry = rateLimitStore.get(key);
+
+  if (!entry || now > entry.resetTime) {
+    // Create new window
+    const resetTime = now + windowMs;
+    rateLimitStore.set(key, { count: 1, resetTime });
+    return { allowed: true, remaining: maxRequests - 1, resetTime };
+  }
+
+  if (entry.count >= maxRequests) {
+    // Limit exceeded
+    return { allowed: false, remaining: 0, resetTime: entry.resetTime };
+  }
+
+  // Increment count
+  entry.count++;
+  rateLimitStore.set(key, entry);
+  return { allowed: true, remaining: maxRequests - entry.count, resetTime: entry.resetTime };
+}
+
+// Clean up expired entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (now > entry.resetTime) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, 60000); // Clean every minute
+
 export interface AppRuntime {
   app: Hono;
   dispose: () => void;
@@ -824,6 +868,28 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
   });
 
   api.post('/ccs/import', async (c) => {
+    // Rate limiting: max 10 requests per 15 minutes per IP
+    const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
+                     c.req.header('x-real-ip') ||
+                     'unknown';
+    const rateLimitKey = `ccs-import:${clientIp}`;
+    const rateLimit = checkRateLimit(rateLimitKey, 10, 15 * 60 * 1000);
+
+    if (!rateLimit.allowed) {
+      return c.json(
+        {
+          error: '请求过于频繁，请稍后再试',
+          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
+        },
+        429
+      );
+    }
+
+    // Set rate limit headers
+    c.header('X-RateLimit-Limit', '10');
+    c.header('X-RateLimit-Remaining', rateLimit.remaining.toString());
+    c.header('X-RateLimit-Reset', rateLimit.resetTime.toString());
+
     let body: { providerIds?: string[]; db?: string };
     try {
       body = await c.req.json();
@@ -861,7 +927,7 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
       const importResult = buildImportResult(notYetImported, existingKeys);
 
       // Deep clone to avoid mutating the shared config object
-      const clonedConfig: AppConfig = JSON.parse(JSON.stringify(config));
+      const clonedConfig: AppConfig = structuredClone(config);
       const { config: newConfig, imported, skipped } = mergeImportIntoConfig(
         clonedConfig,
         importResult
