@@ -21,6 +21,16 @@ export interface PluginConfig {
   params?: Record<string, unknown>;
 }
 
+export interface BalanceConfig {
+  request: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+  };
+  extractor: string;
+}
+
 export interface ProviderConfig {
   type: ProviderType;
   base: string;
@@ -28,6 +38,7 @@ export interface ProviderConfig {
   proxy?: string;
   models: Record<string, ModelCapabilities>;
   plugins?: PluginConfig[];
+  balance?: BalanceConfig;
 }
 
 export interface LogConfig {
@@ -139,4 +150,15 @@ export interface UsageMetricsResponse {
     outputTokens: number;
     cost: number;
   }>;
+}
+
+export interface ProviderBalanceResult {
+  provider: string;
+  remaining: number;
+  unit: string;
+  error?: string | null;
+}
+
+export interface BalanceResponse {
+  balances: ProviderBalanceResult[];
 }

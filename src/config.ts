@@ -88,6 +88,16 @@ export interface PluginConfig {
   params?: Record<string, unknown>;
 }
 
+export interface BalanceConfig {
+  request: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+  };
+  extractor: string;
+}
+
 export interface ProviderConfig {
   type: ProviderType;
   base: string;
@@ -96,6 +106,7 @@ export interface ProviderConfig {
   models: Record<string, ModelCapabilities>;
   /** 插件列表，数组顺序 = 洋葱模型外→内层级 */
   plugins?: PluginConfig[];
+  balance?: BalanceConfig;
 }
 
 export interface LogConfig {
