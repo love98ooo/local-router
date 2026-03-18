@@ -80,7 +80,6 @@ function checkRateLimit(
   return { allowed: true, remaining: maxRequests - entry.count, resetTime: entry.resetTime };
 }
 
-<<<<<<< HEAD
 function startRateLimitCleanup(registerCleanup?: (fn: CleanupFn) => void): void {
   const timer = setInterval(() => {
     const now = Date.now();
@@ -92,17 +91,6 @@ function startRateLimitCleanup(registerCleanup?: (fn: CleanupFn) => void): void 
   }, 60_000);
   registerCleanup?.(() => clearInterval(timer));
 }
-=======
-// Clean up expired entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (now > entry.resetTime) {
-      rateLimitStore.delete(key);
-    }
-  }
-}, 60000); // Clean every minute
->>>>>>> 8e66952 (fix: address security and performance issues in CCS import)
 
 export interface AppRuntime {
   app: Hono;
@@ -275,6 +263,7 @@ function createChatProxyModel(providerName: string, providerConfig: AppConfig['p
 // 管理面板配置 API
 function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, registerCleanup?: (cleanup: CleanupFn) => void): Hono {
   const api = new Hono();
+  startRateLimitCleanup(registerCleanup);
   const cryptoSessions = new Map<string, { session: CryptoSession; createdAt: number }>();
   const CRYPTO_SESSION_TTL_MS = 2 * 60 * 1000;
   const CRYPTO_SESSION_MAX = 512;

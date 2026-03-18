@@ -27,9 +27,25 @@ export interface ImportResult {
 }
 
 const DEFAULT_CCS_DB_PATH = join(homedir(), '.cc-switch', 'cc-switch.db');
+const DEFAULT_CLAUDE_MODELS = ['sonnet', 'haiku', 'opus'] as const;
 
-function validateString(value: unknown, defaultValue = ''): string {
+export function validateString(value: unknown, defaultValue = ''): string {
   return typeof value === 'string' ? value : defaultValue;
+}
+
+function validateDbPath(path: string): void {
+  const homeDir = homedir();
+  const isAllowedPath =
+    path.startsWith(homeDir) ||
+    path.startsWith('/tmp/') ||
+    path.startsWith('/private/tmp/');
+  if (!isAllowedPath) {
+    throw new Error('数据库路径必须在用户目录或临时目录下');
+  }
+  const ext = basename(path).split('.').pop()?.toLowerCase();
+  if (ext !== 'db' && ext !== 'sqlite') {
+    throw new Error('数据库文件必须是 .db 或 .sqlite 格式');
+  }
 }
 
 function toKebabCase(name: string): string {
@@ -90,50 +106,17 @@ export function getDefaultCCSDbPath(): string {
 
 export function ccsDbExists(dbPath?: string): boolean {
   const path = dbPath ? resolve(dbPath) : DEFAULT_CCS_DB_PATH;
-
-  // Security check: ensure path is in allowed directories
-  const homeDir = homedir();
-  const isAllowedPath = path.startsWith(homeDir) ||
-                        path.startsWith('/tmp/') ||
-                        path.startsWith('/private/tmp/');
-
-  if (!isAllowedPath) {
+  try {
+    if (dbPath) validateDbPath(path);
+  } catch {
     return false;
   }
-
-  // Ensure file extension is .db or .sqlite
-  const ext = basename(path).split('.').pop()?.toLowerCase();
-  if (ext !== 'db' && ext !== 'sqlite') {
-    return false;
-  }
-
   return existsSync(path);
 }
 
 export function readCCSProviders(dbPath?: string): CCSProvider[] {
-  let path: string;
-
-  if (dbPath) {
-    path = resolve(dbPath);
-    const homeDir = homedir();
-
-    // Security check: ensure path is in allowed directories
-    const isAllowedPath = path.startsWith(homeDir) ||
-                          path.startsWith('/tmp/') ||
-                          path.startsWith('/private/tmp/');
-
-    if (!isAllowedPath) {
-      throw new Error('数据库路径必须在用户目录或临时目录下');
-    }
-
-    // Ensure file extension is .db or .sqlite
-    const ext = basename(path).split('.').pop()?.toLowerCase();
-    if (ext !== 'db' && ext !== 'sqlite') {
-      throw new Error('数据库文件必须是 .db 或 .sqlite 格式');
-    }
-  } else {
-    path = DEFAULT_CCS_DB_PATH;
-  }
+  const path = dbPath ? resolve(dbPath) : DEFAULT_CCS_DB_PATH;
+  if (dbPath) validateDbPath(path);
 
   if (!existsSync(path)) {
     throw new Error(`CCS 数据库不存在: ${path}`);
@@ -178,8 +161,7 @@ export function convertCCSProvider(ccs: CCSProvider): ImportedProvider | null {
   const modelNames = extractModels(env, ccs.settingsConfig);
 
   // If no models configured, use Claude Code default model aliases (passthrough mode)
-  const DEFAULT_CLAUDE_MODELS = ['sonnet', 'haiku', 'opus'];
-  const effectiveModels = modelNames.length > 0 ? modelNames : DEFAULT_CLAUDE_MODELS;
+  const effectiveModels = modelNames.length > 0 ? modelNames : [...DEFAULT_CLAUDE_MODELS];
 
   const models: Record<string, ModelCapabilities> = {};
   for (const m of effectiveModels) {
@@ -220,7 +202,10 @@ export function buildImportResult(selected: CCSProvider[], existingKeys?: Set<st
     if (defaultModel) {
       const routeType = converted.type;
       if (!routes[routeType]) routes[routeType] = {};
-      routes[routeType]['*'] = { provider: key, model: defaultModel };
+      // Only set wildcard route for the first provider of each type
+      if (!routes[routeType]['*']) {
+        routes[routeType]['*'] = { provider: key, model: defaultModel };
+      }
     }
   }
 

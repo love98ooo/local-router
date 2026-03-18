@@ -499,6 +499,10 @@ export async function importCCSProviders(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (res.status === 429) {
+      const wait = body.retryAfter ? `请 ${body.retryAfter} 秒后重试` : '请稍后重试';
+      throw new Error(`${body.error ?? '请求过于频繁'}，${wait}`);
+    }
     throw new Error(body.error ?? `导入 CCS 供应商失败: ${res.status}`);
   }
 
