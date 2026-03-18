@@ -81,12 +81,23 @@ export interface ModelCapabilities {
   };
 }
 
+export interface BalanceConfig {
+  request: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+  };
+  extractor: string;
+}
+
 export interface ProviderConfig {
   type: ProviderType;
   base: string;
   apiKey: string;
   proxy?: string;
   models: Record<string, ModelCapabilities>;
+  balance?: BalanceConfig;
 }
 
 export interface LogConfig {

@@ -1,4 +1,13 @@
-import type { AppConfig, CCSProviderInfo, ConfigMeta, LogMetricsResponse, LogMetricsWindow, UsageMetricsResponse, UsageMetricsWindow } from '@/types/config';
+import type {
+  AppConfig,
+  BalanceResponse,
+  CCSProviderInfo,
+  ConfigMeta,
+  LogMetricsResponse,
+  LogMetricsWindow,
+  UsageMetricsResponse,
+  UsageMetricsWindow,
+} from '@/types/config';
 import { CryptoClient, type EncryptedPayload } from './crypto';
 
 interface OneShotSession {
@@ -33,8 +42,9 @@ async function withOneShotSession<T>(
     return await action(session);
   } catch (err) {
     const status =
-      typeof err === 'object' && err !== null && 'status' in err ? (err as { status?: number }).status :
-        undefined;
+      typeof err === 'object' && err !== null && 'status' in err
+        ? (err as { status?: number }).status
+        : undefined;
     if (retry401 && status === 401) {
       const retriedSession = await createOneShotSession();
       return action(retriedSession);
@@ -473,6 +483,17 @@ export async function fetchUsageMetrics(
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? `获取用量统计失败: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchProviderBalances(): Promise<BalanceResponse> {
+  const res = await fetch('/api/balance');
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `获取余额失败: ${res.status}`);
   }
 
   return res.json();

@@ -1,6 +1,16 @@
 import { Coins, RefreshCw } from 'lucide-react';
 import { useEffect } from 'react';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { BalancePanel } from '@/components/dashboard/balance-panel';
 import { Button } from '@/components/ui/button';
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart';
 import {
   Empty,
   EmptyDescription,
@@ -23,6 +33,11 @@ function formatCost(n: number): string {
   if (n < 0.01) return `$${n.toFixed(6)}`;
   return `$${n.toFixed(2)}`;
 }
+
+const trendChartConfig = {
+  inputTokens: { label: '输入', color: 'oklch(0.623 0.214 259.815)' },
+  outputTokens: { label: '输出', color: 'oklch(0.627 0.194 149.214)' },
+} satisfies ChartConfig;
 
 export function UsagePage() {
   const data = useUsageStore((s) => s.data);
@@ -72,6 +87,8 @@ export function UsagePage() {
           </Button>
         </div>
       </div>
+
+      <BalancePanel />
 
       {loading && !data ? (
         <div className="space-y-3">
@@ -139,49 +156,74 @@ export function UsagePage() {
             <div className="border-b px-3 py-2.5">
               <h3 className="text-base font-semibold">Token 用量趋势</h3>
             </div>
-            <div className="px-3 py-2.5 space-y-1.5">
-              {series.map((point) => {
-                const maxTokens = Math.max(...series.map((p) => p.inputTokens + p.outputTokens), 1);
-                const total = point.inputTokens + point.outputTokens;
-                const ratio = total / maxTokens;
-                const inputRatio = maxTokens > 0 ? point.inputTokens / maxTokens : 0;
-                return (
-                  <div key={point.ts} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">
-                        {new Date(point.ts).toLocaleTimeString()}
-                      </span>
-                      <span>
-                        {point.requests} req · {formatTokens(point.inputTokens)} in ·{' '}
-                        {formatTokens(point.outputTokens)} out
-                        {point.cost > 0 ? ` · ${formatCost(point.cost)}` : ''}
-                      </span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-muted flex">
-                      <div
-                        className="h-1.5 rounded-l-full bg-blue-500/70"
-                        style={{
-                          width: `${Math.max(inputRatio * 100, point.inputTokens > 0 ? 1 : 0)}%`,
+            <div className="px-3 py-2.5">
+              <ChartContainer config={trendChartConfig} className="h-[200px] w-full">
+                <AreaChart
+                  data={series.map((p) => ({
+                    time: new Date(p.ts).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    }),
+                    inputTokens: p.inputTokens,
+                    outputTokens: p.outputTokens,
+                  }))}
+                  margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="fillInput" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-inputTokens)" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="var(--color-inputTokens)" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="fillOutput" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-outputTokens)" stopOpacity={0.3} />
+                      <stop
+                        offset="100%"
+                        stopColor="var(--color-outputTokens)"
+                        stopOpacity={0.02}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="time" tickLine={false} axisLine={false} fontSize={11} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={11}
+                    tickFormatter={formatTokens}
+                    width={50}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value, name) => {
+                          const label =
+                            name === 'inputTokens'
+                              ? '输入'
+                              : name === 'outputTokens'
+                                ? '输出'
+                                : String(name);
+                          return `${label}: ${formatTokens(Number(value))}`;
                         }}
                       />
-                      <div
-                        className="h-1.5 rounded-r-full bg-green-500/70"
-                        style={{
-                          width: `${Math.max((ratio - inputRatio) * 100, point.outputTokens > 0 ? 1 : 0)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1">
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-2 w-2 rounded-full bg-blue-500/70" /> 输入
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-2 w-2 rounded-full bg-green-500/70" /> 输出
-                </span>
-              </div>
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="inputTokens"
+                    stroke="var(--color-inputTokens)"
+                    fill="url(#fillInput)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="outputTokens"
+                    stroke="var(--color-outputTokens)"
+                    fill="url(#fillOutput)"
+                    strokeWidth={2}
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                </AreaChart>
+              </ChartContainer>
             </div>
           </section>
 

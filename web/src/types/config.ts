@@ -16,12 +16,23 @@ export interface ModelCapabilities {
   };
 }
 
+export interface BalanceConfig {
+  request: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+  };
+  extractor: string;
+}
+
 export interface ProviderConfig {
   type: ProviderType;
   base: string;
   apiKey: string;
   proxy?: string;
   models: Record<string, ModelCapabilities>;
+  balance?: BalanceConfig;
 }
 
 export interface LogConfig {
@@ -133,6 +144,17 @@ export interface UsageMetricsResponse {
     outputTokens: number;
     cost: number;
   }>;
+}
+
+export interface ProviderBalanceResult {
+  provider: string;
+  remaining: number;
+  unit: string;
+  error?: string | null;
+}
+
+export interface BalanceResponse {
+  balances: ProviderBalanceResult[];
 }
 
 export interface CCSProviderInfo {
