@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { Check, Download, ExternalLink, Loader2, Server } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,7 @@ export function ImportCCSPage() {
     error,
     importing,
     importResult,
-    fetch: fetchProviders,
+    fetchProviders,
     importSelected,
     clearResult,
   } = useCCSImportStore();
@@ -62,6 +63,18 @@ export function ImportCCSPage() {
       <div className="flex items-center justify-center py-20">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
         <span>加载中...</span>
+      </div>
+    );
+  }
+
+  if (error && !dbExists) {
+    return (
+      <div className="space-y-6 p-6">
+        <div>
+          <h1 className="text-2xl font-bold">从 CC Switch 导入</h1>
+          <p className="text-muted-foreground mt-1">将 CC Switch 中已配置的供应商迁移到 local-router</p>
+        </div>
+        <div className="bg-destructive/10 text-destructive rounded-md p-3 text-sm">{error}</div>
       </div>
     );
   }
@@ -145,7 +158,11 @@ export function ImportCCSPage() {
             </p>
           )}
           <p className="text-muted-foreground mt-2 text-xs">
-            请前往「供应商配置」页面查看导入结果
+            前往{' '}
+            <Link to="/providers" className="underline">
+              供应商配置
+            </Link>{' '}
+            页面查看导入结果
           </p>
         </div>
       )}

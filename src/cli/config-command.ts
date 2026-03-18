@@ -13,6 +13,7 @@ import {
   isAlreadyImported,
   mergeImportIntoConfig,
   readCCSProviders,
+  validateString,
 } from '../ccs-import';
 import { cleanupIfStale, checkHealth } from './process';
 import { readRuntimeState } from './runtime';
@@ -451,8 +452,8 @@ async function handleImportCCS(args: string[]): Promise<void> {
 
   console.log(`\n找到 ${ccsProviders.length} 个 CCS 供应商:\n`);
   ccsProviders.forEach((p, i) => {
-    const env = (p.settingsConfig?.env ?? {}) as Record<string, string>;
-    const base = env.ANTHROPIC_BASE_URL ?? '(未设置)';
+    const env = (p.settingsConfig?.env ?? {}) as Record<string, unknown>;
+    const base = validateString(env.ANTHROPIC_BASE_URL) || '(未设置)';
     const current = p.isCurrent ? ' [当前活跃]' : '';
     console.log(`  ${i + 1}) ${p.name}${current}`);
     console.log(`     Base URL: ${base}`);

@@ -12,7 +12,7 @@ interface CCSImportState {
 }
 
 interface CCSImportActions {
-  fetch: (db?: string) => Promise<void>;
+  fetchProviders: (db?: string) => Promise<void>;
   importSelected: (ids: string[], db?: string) => Promise<void>;
   clearResult: () => void;
 }
@@ -27,7 +27,7 @@ export const useCCSImportStore = create<CCSImportStore>((set) => ({
   importing: false,
   importResult: null,
 
-  fetch: async (db) => {
+  fetchProviders: async (db) => {
     set({ loading: true, error: null });
     try {
       const data = await fetchCCSProviders(db);
@@ -35,6 +35,7 @@ export const useCCSImportStore = create<CCSImportStore>((set) => ({
     } catch (err) {
       set({
         loading: false,
+        dbExists: false,
         error: err instanceof Error ? err.message : '获取 CCS 供应商列表失败',
       });
     }

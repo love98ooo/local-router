@@ -78,15 +78,17 @@ function checkRateLimit(
   return { allowed: true, remaining: maxRequests - entry.count, resetTime: entry.resetTime };
 }
 
-// Clean up expired entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (now > entry.resetTime) {
-      rateLimitStore.delete(key);
+function startRateLimitCleanup(registerCleanup?: (fn: CleanupFn) => void): void {
+  const timer = setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of rateLimitStore.entries()) {
+      if (now > entry.resetTime) {
+        rateLimitStore.delete(key);
+      }
     }
-  }
-}, 60000); // Clean every minute
+  }, 60_000);
+  registerCleanup?.(() => clearInterval(timer));
+}
 
 export interface AppRuntime {
   app: Hono;
@@ -259,6 +261,7 @@ function createChatProxyModel(providerName: string, providerConfig: AppConfig['p
 // 管理面板配置 API
 function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: CleanupFn) => void): Hono {
   const api = new Hono();
+  startRateLimitCleanup(registerCleanup);
   const cryptoSessions = new Map<string, { session: CryptoSession; createdAt: number }>();
   const CRYPTO_SESSION_TTL_MS = 2 * 60 * 1000;
   const CRYPTO_SESSION_MAX = 512;
@@ -868,12 +871,8 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
   });
 
   api.post('/ccs/import', async (c) => {
-    // Rate limiting: max 10 requests per 15 minutes per IP
-    const clientIp = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-                     c.req.header('x-real-ip') ||
-                     'unknown';
-    const rateLimitKey = `ccs-import:${clientIp}`;
-    const rateLimit = checkRateLimit(rateLimitKey, 10, 15 * 60 * 1000);
+    // Rate limiting: max 10 requests per 15 minutes (global, this is a local tool)
+    const rateLimit = checkRateLimit('ccs-import', 10, 15 * 60 * 1000);
 
     if (!rateLimit.allowed) {
       return c.json(
