@@ -134,3 +134,13 @@ export interface UsageMetricsResponse {
     cost: number;
   }>;
 }
+
+export interface CCSProviderInfo {
+  id: string;
+  name: string;
+  base: string;
+  type: ProviderType;
+  models: string[];
+  isCurrent: boolean;
+  alreadyImported: boolean;
+}

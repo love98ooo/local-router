@@ -1,4 +1,4 @@
-import type { AppConfig, ConfigMeta, LogMetricsResponse, LogMetricsWindow, UsageMetricsResponse, UsageMetricsWindow } from '@/types/config';
+import type { AppConfig, CCSProviderInfo, ConfigMeta, LogMetricsResponse, LogMetricsWindow, UsageMetricsResponse, UsageMetricsWindow } from '@/types/config';
 import { CryptoClient, type EncryptedPayload } from './crypto';
 
 interface OneShotSession {
@@ -473,6 +473,44 @@ export async function fetchUsageMetrics(
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? `获取用量统计失败: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchCCSProviders(
+  db?: string
+): Promise<{ providers: CCSProviderInfo[]; dbExists: boolean }> {
+  const params = new URLSearchParams();
+  if (db) params.set('db', db);
+  const query = params.toString();
+  const res = await fetch(`/api/ccs/providers${query ? `?${query}` : ''}`);
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `获取 CCS 供应商列表失败: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function importCCSProviders(
+  providerIds: string[],
+  db?: string
+): Promise<{ imported: string[]; skipped: string[] }> {
+  const res = await fetch('/api/ccs/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ providerIds, ...(db ? { db } : {}) }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 429) {
+      const wait = body.retryAfter ? `请 ${body.retryAfter} 秒后重试` : '请稍后重试';
+      throw new Error(`${body.error ?? '请求过于频繁'}，${wait}`);
+    }
+    throw new Error(body.error ?? `导入 CCS 供应商失败: ${res.status}`);
   }
 
   return res.json();

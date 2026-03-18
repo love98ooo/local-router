@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, Navigate } from '@tanstack/
 import App from '@/App';
 import { ChatPage } from '@/pages/chat';
 import { DashboardPage } from '@/pages/dashboard';
+import { ImportCCSPage } from '@/pages/import-ccs';
 import { LogDetailPage } from '@/pages/log-detail';
 import { LogsPage } from '@/pages/logs';
 import { LogsSettingsPage } from '@/pages/logs-settings';
@@ -78,6 +79,12 @@ const usageRoute = createRoute({
   component: UsagePage,
 });
 
+const importCCSRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/import-ccs',
+  component: ImportCCSPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
@@ -89,6 +96,7 @@ const routeTree = rootRoute.addChildren([
   logDetailRoute,
   logsSettingsRoute,
   usageRoute,
+  importCCSRoute,
 ]);
 
 export const router = createRouter({
