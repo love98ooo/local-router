@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  Download,
   FileCog,
   FileSearch,
   LayoutDashboard,
@@ -26,7 +27,8 @@ const NAV_ITEMS: {
     | "/routes"
     | "/logs"
     | "/sessions"
-    | "/logs-settings";
+    | "/logs-settings"
+    | "/import-ccs";
   label: string;
   icon: typeof LayoutDashboard;
 }[] = [
@@ -37,6 +39,7 @@ const NAV_ITEMS: {
   { to: "/providers", label: "供应商配置", icon: Server },
   { to: "/routes", label: "路由配置", icon: Route },
   { to: "/logs-settings", label: "日志配置", icon: FileCog },
+  { to: "/import-ccs", label: "CCS 导入", icon: Download },
 ];
 
 export function AppSidebar() {

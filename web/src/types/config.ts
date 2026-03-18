@@ -85,3 +85,13 @@ export interface LogMetricsResponse {
   };
   warnings: string[];
 }
+
+export interface CCSProviderInfo {
+  id: string;
+  name: string;
+  base: string;
+  type: ProviderType;
+  models: string[];
+  isCurrent: boolean;
+  alreadyImported: boolean;
+}
