@@ -5,6 +5,14 @@ import type { Context } from 'hono';
 import type { LogEvent, LogMeta } from './logger';
 import { extractProviderRequestId, getLogger, normalizeUrl } from './logger';
 import { extractUsageFromResponse, extractUsageFromStream } from './usage-extract';
+import type { Plugin, PluginContext, PluginPhaseLog } from './plugin';
+import {
+  createSSEPluginTransform,
+  executeJsonResponsePlugins,
+  executeRequestPlugins,
+} from './plugin-engine';
+
+export type { PluginPhaseLog } from './plugin';
 
 export type AuthType = 'x-api-key' | 'bearer';
 
@@ -67,6 +75,8 @@ export interface ProxyRequestOptions {
   authType: AuthType;
   body: string;
   logMeta: LogMeta;
+  plugins?: Plugin[];
+  pluginConfigs?: PluginPhaseLog[];
 }
 
 function buildLogEvent(
@@ -103,10 +113,6 @@ function buildLogEvent(
     provider_request_id: null,
     error_type: null,
     error_message: null,
-    usage_input_tokens: null,
-    usage_output_tokens: null,
-    usage_cache_read_tokens: null,
-    usage_cache_creation_tokens: null,
     ...overrides,
   };
 }
@@ -145,11 +151,45 @@ async function flushTempCaptureToLogger(
  * 4) 记录请求/响应日志（流式使用 tee 分流）
  */
 export async function proxyRequest(c: Context, options: ProxyRequestOptions): Promise<Response> {
-  const { logMeta } = options;
+  const { logMeta, plugins, pluginConfigs } = options;
   const logger = getLogger();
   const shouldLog = logger?.enabled ?? false;
+  const hasPlugins = plugins && plugins.length > 0;
 
-  const headers = buildUpstreamHeaders(c.req.raw.headers, options.apiKey, options.authType);
+  let targetUrl = options.targetUrl;
+  let headers = buildUpstreamHeaders(c.req.raw.headers, options.apiKey, options.authType);
+  let bodyStr = options.body;
+
+  // 插件请求阶段
+  const pluginLogOverrides: Partial<LogEvent> = {};
+  if (hasPlugins) {
+    const bodyObj = JSON.parse(bodyStr) as Record<string, unknown>;
+    const ctx: PluginContext = {
+      requestId: logMeta.requestId,
+      provider: logMeta.provider,
+      modelIn: logMeta.modelIn,
+      modelOut: logMeta.modelOut,
+      routeType: logMeta.routeType,
+      isStream: logMeta.isStream,
+    };
+
+    const result = await executeRequestPlugins(plugins, ctx, targetUrl, headers, bodyObj);
+
+    // 记录插件修改
+    if (pluginConfigs) {
+      pluginLogOverrides.plugins_request = pluginConfigs;
+    }
+    if (result.url !== targetUrl) {
+      targetUrl = result.url;
+      pluginLogOverrides.request_url_after_plugins = targetUrl;
+    }
+    headers = result.headers;
+    const newBodyStr = JSON.stringify(result.body);
+    if (newBodyStr !== bodyStr) {
+      bodyStr = newBodyStr;
+      pluginLogOverrides.request_body_after_plugins = result.body;
+    }
+  }
 
   const requestBody =
     shouldLog && logger?.bodyPolicy !== 'off' ? JSON.parse(options.body) : undefined;
@@ -158,21 +198,21 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
 
   let upstreamRes: Response;
   try {
-    upstreamRes = await fetch(options.targetUrl, {
+    upstreamRes = await fetch(targetUrl, {
       method: c.req.method,
       headers,
-      body: options.body,
+      body: bodyStr,
       ...(proxy ? { proxy } : {}),
-      // 显式开启自动解压，避免运行时默认值差异。
       decompress: true,
     });
   } catch (err) {
     if (shouldLog) {
       logger?.writeEvent(
-        buildLogEvent(logMeta, options.targetUrl, proxy, Date.now(), {
+        buildLogEvent(logMeta, targetUrl, proxy, Date.now(), {
           error_type: err instanceof Error ? err.constructor.name : 'UnknownError',
           error_message: err instanceof Error ? err.message : String(err),
           ...(requestBody !== undefined && { request_body: requestBody }),
+          ...pluginLogOverrides,
         })
       );
     }
@@ -181,7 +221,7 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
 
   const responseHeaders = buildResponseHeaders(upstreamRes.headers);
 
-  if (!shouldLog) {
+  if (!shouldLog && !hasPlugins) {
     return new Response(upstreamRes.body, {
       status: upstreamRes.status,
       headers: responseHeaders,
@@ -192,8 +232,48 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
   const providerRequestId = extractProviderRequestId(upstreamRes.headers);
   const dateStr = new Date(logMeta.tsStart).toISOString().slice(0, 10);
 
-  // 流式响应：tee 分流，一路回客户端，一路写日志
+  // 流式响应
   if (logMeta.isStream && upstreamRes.body) {
+    // SSE 插件处理
+    let sseStatus = upstreamRes.status;
+    let sseHeaders = responseHeaders;
+    let sseTransform: TransformStream<Uint8Array, Uint8Array> | null = null;
+
+    if (hasPlugins) {
+      const ctx: PluginContext = {
+        requestId: logMeta.requestId,
+        provider: logMeta.provider,
+        modelIn: logMeta.modelIn,
+        modelOut: logMeta.modelOut,
+        routeType: logMeta.routeType,
+        isStream: logMeta.isStream,
+      };
+      const sseResult = await createSSEPluginTransform(
+        plugins,
+        ctx,
+        upstreamRes.status,
+        responseHeaders
+      );
+      sseStatus = sseResult.status;
+      sseHeaders = sseResult.headers;
+      sseTransform = sseResult.transform;
+
+      if (pluginConfigs) {
+        pluginLogOverrides.plugins_response = pluginConfigs;
+      }
+    }
+
+    if (!shouldLog) {
+      // 有插件但无日志
+      const outputBody = sseTransform
+        ? upstreamRes.body.pipeThrough(sseTransform)
+        : upstreamRes.body;
+      return new Response(outputBody, {
+        status: sseStatus,
+        headers: sseHeaders,
+      });
+    }
+
     const [clientStream, logStream] = upstreamRes.body.tee();
 
     (async () => {
@@ -212,7 +292,6 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
           await appendTempStreamCapture(tempPath, value);
         }
 
-        // Extract usage from the captured stream before flushing
         const sseText = await readFile(tempPath, 'utf-8').catch(() => '');
         if (sseText) {
           streamUsage = extractUsageFromStream(logMeta.routeType, sseText);
@@ -224,10 +303,10 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
         console.error('[logger] 流式日志处理失败:', err);
       } finally {
         logger?.writeEvent(
-          buildLogEvent(logMeta, options.targetUrl, proxy, Date.now(), {
-            upstream_status: upstreamRes.status,
+          buildLogEvent(logMeta, targetUrl, proxy, Date.now(), {
+            upstream_status: sseStatus,
             content_type_res: contentTypeRes,
-            response_headers: responseHeaders,
+            response_headers: sseHeaders,
             stream_bytes: streamBytes,
             provider_request_id: providerRequestId,
             usage_input_tokens: streamUsage.inputTokens,
@@ -236,33 +315,81 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
             usage_cache_creation_tokens: streamUsage.cacheCreationTokens,
             ...(streamFile != null && { stream_file: streamFile }),
             ...(requestBody !== undefined && { request_body: requestBody }),
+            ...pluginLogOverrides,
           })
         );
       }
     })();
 
-    return new Response(clientStream, {
-      status: upstreamRes.status,
-      headers: responseHeaders,
+    const outputBody = sseTransform
+      ? clientStream.pipeThrough(sseTransform)
+      : clientStream;
+
+    return new Response(outputBody, {
+      status: sseStatus,
+      headers: sseHeaders,
     });
   }
 
-  // 非流式响应：读取完整内容后记录
-  const responseText = await upstreamRes.text();
-  const responseBytes = Buffer.byteLength(responseText, 'utf-8');
+  // 非流式响应
+  let responseText = await upstreamRes.text();
+  let responseStatus = upstreamRes.status;
+  let finalResponseHeaders = responseHeaders;
 
+  // JSON 响应插件处理
+  if (hasPlugins) {
+    const ctx: PluginContext = {
+      requestId: logMeta.requestId,
+      provider: logMeta.provider,
+      modelIn: logMeta.modelIn,
+      modelOut: logMeta.modelOut,
+      routeType: logMeta.routeType,
+      isStream: logMeta.isStream,
+    };
+    const result = await executeJsonResponsePlugins(
+      plugins,
+      ctx,
+      upstreamRes.status,
+      responseHeaders,
+      responseText
+    );
+
+    if (pluginConfigs) {
+      pluginLogOverrides.plugins_response = pluginConfigs;
+    }
+    if (result.body !== responseText) {
+      if (shouldLog && logger?.bodyPolicy !== 'off') {
+        pluginLogOverrides.response_body_before_plugins = responseText;
+      }
+      pluginLogOverrides.response_body_after_plugins = result.body;
+    }
+    responseStatus = result.status;
+    finalResponseHeaders = result.headers;
+    responseText = result.body;
+  }
+
+  if (!shouldLog) {
+    return new Response(responseText, {
+      status: responseStatus,
+      headers: finalResponseHeaders,
+    });
+  }
+
+  // 用最终客户端可见的值计算 response_bytes
+  const responseBytes = Buffer.byteLength(responseText, 'utf-8');
   const usage = extractUsageFromResponse(logMeta.routeType, responseText);
 
   const eventOverrides: Partial<LogEvent> = {
     upstream_status: upstreamRes.status,
     content_type_res: contentTypeRes,
-    response_headers: responseHeaders,
+    response_headers: finalResponseHeaders,
     response_bytes: responseBytes,
     provider_request_id: providerRequestId,
     usage_input_tokens: usage.inputTokens,
     usage_output_tokens: usage.outputTokens,
     usage_cache_read_tokens: usage.cacheReadTokens,
     usage_cache_creation_tokens: usage.cacheCreationTokens,
+    ...pluginLogOverrides,
   };
 
   if (requestBody !== undefined) {
@@ -272,10 +399,10 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
     eventOverrides.response_body = responseText;
   }
 
-  logger?.writeEvent(buildLogEvent(logMeta, options.targetUrl, proxy, Date.now(), eventOverrides));
+  logger?.writeEvent(buildLogEvent(logMeta, targetUrl, proxy, Date.now(), eventOverrides));
 
   return new Response(responseText, {
-    status: upstreamRes.status,
-    headers: responseHeaders,
+    status: responseStatus,
+    headers: finalResponseHeaders,
   });
 }

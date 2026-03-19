@@ -14,7 +14,7 @@ export interface RunningServer {
   stop: () => Promise<void>;
 }
 
-const DEFAULT_IDLE_TIMEOUT_SECONDS = 255;
+const DEFAULT_IDLE_TIMEOUT_SECONDS = 0;
 
 function resolveIdleTimeoutSeconds(explicit?: number): number {
   let value = DEFAULT_IDLE_TIMEOUT_SECONDS;
@@ -34,8 +34,8 @@ function resolveIdleTimeoutSeconds(explicit?: number): number {
   return Math.min(value, 255);
 }
 
-export function startServer(options: StartServerOptions): RunningServer {
-  const runtime = createAppRuntimeFromConfigPath(options.configPath);
+export async function startServer(options: StartServerOptions): Promise<RunningServer> {
+  const runtime = await createAppRuntimeFromConfigPath(options.configPath);
   const idleTimeout = resolveIdleTimeoutSeconds(options.idleTimeoutSeconds);
   const server = Bun.serve({
     fetch: runtime.app.fetch,
