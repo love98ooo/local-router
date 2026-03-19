@@ -39,9 +39,38 @@ export function extractUserIdRawFromRequestBody(requestBody: unknown): {
   };
 }
 
+// New format: JSON string with device_id, account_uuid, session_id
+function parseUserSessionFromJsonFormat(
+  userIdRaw: string
+): { userKey: string; sessionId: string } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(userIdRaw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const obj = parsed as Record<string, unknown>;
+
+  const sessionId = typeof obj.session_id === 'string' ? obj.session_id.trim() : '';
+  if (!sessionId) return null;
+
+  const userKey =
+    (typeof obj.account_uuid === 'string' ? obj.account_uuid.trim() : '') ||
+    (typeof obj.device_id === 'string' ? obj.device_id.trim() : '');
+
+  return { userKey: userKey || sessionId, sessionId };
+}
+
 export function parseUserSessionFromUserIdRaw(
   userIdRaw: string
 ): { userKey: string; sessionId: string } | null {
+  // Try new JSON format first
+  if (userIdRaw.trimStart().startsWith('{')) {
+    return parseUserSessionFromJsonFormat(userIdRaw);
+  }
+
+  // Legacy format: {userKey}_account__session_{sessionId}
   const index = userIdRaw.indexOf(USER_SESSION_DELIMITER);
   if (index <= 0) return null;
 
