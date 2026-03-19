@@ -422,6 +422,11 @@ export async function getUsageMetrics(options: {
     series,
   };
 
+  // Evict expired entries before writing to prevent unbounded growth
+  for (const [k, v] of usageCache.entries()) {
+    if (v.expiresAt <= nowMs) usageCache.delete(k);
+  }
+
   usageCache.set(cacheKey, {
     expiresAt: nowMs + CACHE_TTL_MS,
     value: response,

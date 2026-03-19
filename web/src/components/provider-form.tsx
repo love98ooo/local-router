@@ -313,6 +313,7 @@ export function ProviderForm({ name, config, isNew, onChange }: ProviderFormProp
       <Separator />
 
       <BalanceEditor
+        key={name}
         balance={config.balance}
         onChange={(balance) => {
           const next = { ...config };
