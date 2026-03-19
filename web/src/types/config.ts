@@ -8,6 +8,22 @@ export interface RouteTarget {
 export interface ModelCapabilities {
   'image-input'?: boolean;
   reasoning?: boolean;
+  pricing?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheCreation?: number;
+  };
+}
+
+export interface BalanceConfig {
+  request: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+  };
+  extractor: string;
 }
 
 export interface ProviderConfig {
@@ -16,6 +32,7 @@ export interface ProviderConfig {
   apiKey: string;
   proxy?: string;
   models: Record<string, ModelCapabilities>;
+  balance?: BalanceConfig;
 }
 
 export interface LogConfig {
@@ -84,6 +101,60 @@ export interface LogMetricsResponse {
     network_error: number;
   };
   warnings: string[];
+}
+
+export type UsageMetricsWindow = '1h' | '6h' | '24h';
+
+export interface UsageMetricsResponse {
+  window: string;
+  from: string;
+  to: string;
+  summary: {
+    totalRequests: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalCacheReadTokens: number;
+    totalCacheCreationTokens: number;
+    totalCost: number;
+  };
+  byProvider: Array<{
+    provider: string;
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    cost: number;
+  }>;
+  byModel: Array<{
+    provider: string;
+    model: string;
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    cost: number;
+    pricing: { input: number; output: number; cacheRead: number; cacheCreation: number } | null;
+  }>;
+  series: Array<{
+    ts: string;
+    requests: number;
+    inputTokens: number;
+    outputTokens: number;
+    cost: number;
+  }>;
+}
+
+export interface ProviderBalanceResult {
+  provider: string;
+  remaining: number;
+  unit: string;
+  error?: string | null;
+}
+
+export interface BalanceResponse {
+  balances: ProviderBalanceResult[];
 }
 
 export interface CCSProviderInfo {

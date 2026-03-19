@@ -9,6 +9,7 @@ import { LogsSettingsPage } from '@/pages/logs-settings';
 import { ProvidersPage } from '@/pages/providers';
 import { RoutesPage } from '@/pages/routes';
 import { SessionsPage } from '@/pages/sessions';
+import { UsagePage } from '@/pages/usage';
 
 const rootRoute = createRootRoute({
   component: App,
@@ -72,6 +73,12 @@ const logsSettingsRoute = createRoute({
   component: LogsSettingsPage,
 });
 
+const usageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/usage',
+  component: UsagePage,
+});
+
 const importCCSRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/import-ccs',
@@ -88,6 +95,7 @@ const routeTree = rootRoute.addChildren([
   sessionsRoute,
   logDetailRoute,
   logsSettingsRoute,
+  usageRoute,
   importCCSRoute,
 ]);
 

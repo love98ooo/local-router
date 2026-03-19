@@ -73,6 +73,22 @@ export interface RouteTarget {
 export interface ModelCapabilities {
   'image-input'?: boolean;
   reasoning?: boolean;
+  pricing?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheCreation?: number;
+  };
+}
+
+export interface BalanceConfig {
+  request: {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+  };
+  extractor: string;
 }
 
 export interface ProviderConfig {
@@ -81,6 +97,7 @@ export interface ProviderConfig {
   apiKey: string;
   proxy?: string;
   models: Record<string, ModelCapabilities>;
+  balance?: BalanceConfig;
 }
 
 export interface LogConfig {

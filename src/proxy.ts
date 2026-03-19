@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import type { Context } from 'hono';
 import type { LogEvent, LogMeta } from './logger';
 import { extractProviderRequestId, getLogger, normalizeUrl } from './logger';
+import { extractUsageFromResponse, extractUsageFromStream } from './usage-extract';
 
 export type AuthType = 'x-api-key' | 'bearer';
 
@@ -102,6 +103,10 @@ function buildLogEvent(
     provider_request_id: null,
     error_type: null,
     error_message: null,
+    usage_input_tokens: null,
+    usage_output_tokens: null,
+    usage_cache_read_tokens: null,
+    usage_cache_creation_tokens: null,
     ...overrides,
   };
 }
@@ -195,6 +200,7 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
       const tempPath = createTempStreamCapturePath(logMeta.requestId);
       let streamBytes = 0;
       let streamFile: string | null = null;
+      let streamUsage = { inputTokens: null as number | null, outputTokens: null as number | null, cacheReadTokens: null as number | null, cacheCreationTokens: null as number | null };
 
       try {
         const reader = logStream.getReader();
@@ -204,6 +210,12 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
           if (done) break;
           streamBytes += value.byteLength;
           await appendTempStreamCapture(tempPath, value);
+        }
+
+        // Extract usage from the captured stream before flushing
+        const sseText = await readFile(tempPath, 'utf-8').catch(() => '');
+        if (sseText) {
+          streamUsage = extractUsageFromStream(logMeta.routeType, sseText);
         }
 
         streamFile = await flushTempCaptureToLogger(tempPath, logMeta.requestId, dateStr, logger);
@@ -218,6 +230,10 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
             response_headers: responseHeaders,
             stream_bytes: streamBytes,
             provider_request_id: providerRequestId,
+            usage_input_tokens: streamUsage.inputTokens,
+            usage_output_tokens: streamUsage.outputTokens,
+            usage_cache_read_tokens: streamUsage.cacheReadTokens,
+            usage_cache_creation_tokens: streamUsage.cacheCreationTokens,
             ...(streamFile != null && { stream_file: streamFile }),
             ...(requestBody !== undefined && { request_body: requestBody }),
           })
@@ -235,12 +251,18 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
   const responseText = await upstreamRes.text();
   const responseBytes = Buffer.byteLength(responseText, 'utf-8');
 
+  const usage = extractUsageFromResponse(logMeta.routeType, responseText);
+
   const eventOverrides: Partial<LogEvent> = {
     upstream_status: upstreamRes.status,
     content_type_res: contentTypeRes,
     response_headers: responseHeaders,
     response_bytes: responseBytes,
     provider_request_id: providerRequestId,
+    usage_input_tokens: usage.inputTokens,
+    usage_output_tokens: usage.outputTokens,
+    usage_cache_read_tokens: usage.cacheReadTokens,
+    usage_cache_creation_tokens: usage.cacheCreationTokens,
   };
 
   if (requestBody !== undefined) {

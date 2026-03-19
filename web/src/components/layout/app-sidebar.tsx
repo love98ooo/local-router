@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  Coins,
   Download,
   FileCog,
   FileSearch,
@@ -27,6 +28,7 @@ const NAV_ITEMS: {
     | "/routes"
     | "/logs"
     | "/sessions"
+    | "/usage"
     | "/logs-settings"
     | "/import-ccs";
   label: string;
@@ -34,6 +36,7 @@ const NAV_ITEMS: {
 }[] = [
   { to: "/dashboard", label: "仪表盘", icon: LayoutDashboard },
   { to: "/chat", label: "聊天面板", icon: MessageSquare },
+  { to: "/usage", label: "用量统计", icon: Coins },
   { to: "/logs", label: "日志检索", icon: FileSearch },
   { to: "/sessions", label: "用户会话", icon: Users },
   { to: "/providers", label: "供应商配置", icon: Server },

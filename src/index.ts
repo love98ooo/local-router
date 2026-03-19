@@ -2,14 +2,24 @@ import { readFileSync } from 'node:fs';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { streamText } from 'ai';
 import { swaggerUI } from '@hono/swagger-ui';
+import { streamText } from 'ai';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
+import { queryAllBalances } from './balance-query';
+import {
+  buildImportResult,
+  ccsDbExists,
+  convertCCSProvider,
+  isAlreadyImported,
+  mergeImportIntoConfig,
+  readCCSProviders,
+} from './ccs-import';
 import type { AppConfig, RouteTarget } from './config';
 import { parseConfigPath, resolveLogBaseDir } from './config';
 import { ConfigStore } from './config-store';
+import { validateConfigOrThrow } from './config-validate';
 import { CryptoSession } from './crypto';
 import { getLogMetrics, isLogMetricsWindow } from './log-metrics';
 import {
@@ -32,15 +42,7 @@ import { createAnthropicMessagesRoutes } from './routes/anthropic-messages';
 import { createOpenaiCompletionsRoutes } from './routes/openai-completions';
 import { createOpenaiResponsesRoutes } from './routes/openai-responses';
 import { getBundledSchemaPath, getBundledWebRoot } from './runtime-assets';
-import { validateConfigOrThrow } from './config-validate';
-import {
-  buildImportResult,
-  ccsDbExists,
-  convertCCSProvider,
-  isAlreadyImported,
-  mergeImportIntoConfig,
-  readCCSProviders,
-} from './ccs-import';
+import { getUsageMetrics, isUsageMetricsWindow } from './usage-metrics';
 
 type CleanupFn = () => void;
 
@@ -238,7 +240,11 @@ function normalizeChatProxyBaseUrl(
   return normalized;
 }
 
-function createChatProxyModel(providerName: string, providerConfig: AppConfig['providers'][string], model: string) {
+function createChatProxyModel(
+  providerName: string,
+  providerConfig: AppConfig['providers'][string],
+  model: string
+) {
   const common = {
     apiKey: providerConfig.apiKey,
     baseURL: normalizeChatProxyBaseUrl(providerConfig.type, providerConfig.base),
@@ -259,7 +265,10 @@ function createChatProxyModel(providerName: string, providerConfig: AppConfig['p
 }
 
 // 管理面板配置 API
-function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: CleanupFn) => void): Hono {
+function createAdminApiRoutes(
+  store: ConfigStore,
+  registerCleanup?: (cleanup: CleanupFn) => void
+): Hono {
   const api = new Hono();
   startRateLimitCleanup(registerCleanup);
   const cryptoSessions = new Map<string, { session: CryptoSession; createdAt: number }>();
@@ -292,9 +301,12 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
     return record.session;
   };
 
-  const sessionSweepTimer = setInterval(() => {
-    pruneExpiredCryptoSessions();
-  }, Math.max(5_000, Math.floor(CRYPTO_SESSION_TTL_MS / 2)));
+  const sessionSweepTimer = setInterval(
+    () => {
+      pruneExpiredCryptoSessions();
+    },
+    Math.max(5_000, Math.floor(CRYPTO_SESSION_TTL_MS / 2))
+  );
   sessionSweepTimer.unref?.();
   registerCleanup?.(() => {
     clearInterval(sessionSweepTimer);
@@ -327,7 +339,10 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
       return c.json({ serverPublicKey, sessionId });
     } catch (err) {
       session.dispose();
-      return c.json({ error: `握手失败: ${err instanceof Error ? err.message : String(err)}` }, 400);
+      return c.json(
+        { error: `握手失败: ${err instanceof Error ? err.message : String(err)}` },
+        400
+      );
     }
   });
 
@@ -438,7 +453,11 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
       return c.json({ error: 'provider 和 model 为必填字段' }, 400);
     }
 
-    if (!Array.isArray(body.messages) || body.messages.length === 0 || !body.messages.every(isChatProxyMessage)) {
+    if (
+      !Array.isArray(body.messages) ||
+      body.messages.length === 0 ||
+      !body.messages.every(isChatProxyMessage)
+    ) {
       return c.json({ error: 'messages 必须是非空消息数组' }, 400);
     }
 
@@ -501,6 +520,42 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
         { error: `读取日志统计失败: ${err instanceof Error ? err.message : err}` },
         500
       );
+    }
+  });
+
+  api.get('/usage', async (c) => {
+    const config = store.get();
+    const window = c.req.query('window') ?? '24h';
+    const refresh = c.req.query('refresh') === '1';
+
+    if (!isUsageMetricsWindow(window)) {
+      return c.json({ error: 'window 参数仅支持 1h | 6h | 24h' }, 400);
+    }
+
+    try {
+      const metrics = await getUsageMetrics({
+        config,
+        logConfig: config.log,
+        window,
+        refresh,
+      });
+      return c.json(metrics);
+    } catch (err) {
+      return c.json(
+        { error: `读取用量统计失败: ${err instanceof Error ? err.message : err}` },
+        500
+      );
+    }
+  });
+
+  api.get('/balance', async (c) => {
+    const config = store.get();
+
+    try {
+      const result = await queryAllBalances(config.providers);
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: `查询余额失败: ${err instanceof Error ? err.message : err}` }, 500);
     }
   });
 
@@ -805,7 +860,9 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
             if (closed) return;
 
             if (data.items.length > 0) {
-              const maxTs = Math.max(...data.items.map((item) => Date.parse(item.ts)).filter(Number.isFinite));
+              const maxTs = Math.max(
+                ...data.items.map((item) => Date.parse(item.ts)).filter(Number.isFinite)
+              );
               if (Number.isFinite(maxTs)) {
                 lastSeenTs = Math.max(lastSeenTs, maxTs + 1);
               }
@@ -878,7 +935,7 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
       return c.json(
         {
           error: '请求过于频繁，请稍后再试',
-          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
+          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000),
         },
         429
       );
@@ -927,10 +984,11 @@ function createAdminApiRoutes(store: ConfigStore, registerCleanup?: (cleanup: Cl
 
       // Deep clone to avoid mutating the shared config object
       const clonedConfig: AppConfig = structuredClone(config);
-      const { config: newConfig, imported, skipped } = mergeImportIntoConfig(
-        clonedConfig,
-        importResult
-      );
+      const {
+        config: newConfig,
+        imported,
+        skipped,
+      } = mergeImportIntoConfig(clonedConfig, importResult);
 
       if (imported.length > 0) {
         store.save(newConfig);
