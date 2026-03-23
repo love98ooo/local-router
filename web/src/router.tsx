@@ -73,16 +73,16 @@ const logsSettingsRoute = createRoute({
   component: LogsSettingsPage,
 });
 
-const importCCSRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/import-ccs',
-  component: ImportCCSPage,
-});
-
 const usageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/usage',
   component: UsagePage,
+});
+
+const importCCSRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/import-ccs',
+  component: ImportCCSPage,
 });
 
 const routeTree = rootRoute.addChildren([
@@ -95,8 +95,8 @@ const routeTree = rootRoute.addChildren([
   sessionsRoute,
   logDetailRoute,
   logsSettingsRoute,
-  importCCSRoute,
   usageRoute,
+  importCCSRoute,
 ]);
 
 export const router = createRouter({

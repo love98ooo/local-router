@@ -46,11 +46,19 @@ export async function queryProviderBalance(
 
     const response = await res.json();
 
-    // eslint-disable-next-line no-new-func
-    const extractFn = new Function('response', `return ${extractor}`) as (response: unknown) => {
-      remaining: number;
-      unit: string;
-    };
+    // NOTE: extractor is a trusted JS expression from the user's own config file.
+    // It runs in the same process with full access — only use with trusted configs.
+    let extractFn: (response: unknown) => { remaining: number; unit: string };
+    try {
+      extractFn = new Function('response', `return ${extractor}`) as typeof extractFn;
+    } catch (err) {
+      return {
+        provider: providerName,
+        remaining: 0,
+        unit: '',
+        error: `extractor 语法错误: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
 
     const result = extractFn(response);
 

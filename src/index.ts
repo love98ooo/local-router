@@ -9,6 +9,14 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
 import { queryAllBalances } from './balance-query';
+import {
+  buildImportResult,
+  ccsDbExists,
+  convertCCSProvider,
+  isAlreadyImported,
+  mergeImportIntoConfig,
+  readCCSProviders,
+} from './ccs-import';
 import type { AppConfig, RouteTarget } from './config';
 import { parseConfigPath, resolveLogBaseDir } from './config';
 import { ConfigStore } from './config-store';
@@ -31,19 +39,13 @@ import { queryLogSessions } from './log-sessions';
 import { getLogStorageInfo, startLogStorageBackgroundTask } from './log-storage';
 import { initLogger, resetLogger } from './logger';
 import { openAPISpec } from './openapi';
+import type { Plugin, PluginContext } from './plugin';
+import { executeRequestPlugins } from './plugin-engine';
 import { PluginManager } from './plugin-loader';
 import { createAnthropicMessagesRoutes } from './routes/anthropic-messages';
 import { createOpenaiCompletionsRoutes } from './routes/openai-completions';
 import { createOpenaiResponsesRoutes } from './routes/openai-responses';
 import { getBundledSchemaPath, getBundledWebRoot } from './runtime-assets';
-import {
-  buildImportResult,
-  ccsDbExists,
-  convertCCSProvider,
-  isAlreadyImported,
-  mergeImportIntoConfig,
-  readCCSProviders,
-} from './ccs-import';
 import { getUsageMetrics, isUsageMetricsWindow } from './usage-metrics';
 
 type CleanupFn = () => void;
@@ -224,18 +226,61 @@ function createUpstreamFetch(proxy?: string): typeof fetch | undefined {
     })) as typeof fetch;
 }
 
+/**
+ * 创建一个 fetch 包装，在实际发送请求前执行插件的 onRequest 钩子。
+ * 用于 chat proxy 场景，让 AI SDK 的请求也能经过插件管线。
+ */
+function createPluginFetch(
+  plugins: Plugin[],
+  providerName: string,
+  model: string,
+  proxy?: string
+): typeof fetch {
+  const proxyUrl = proxy?.trim() || undefined;
+
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    const headers = new Headers(init?.headers);
+    let bodyStr = typeof init?.body === 'string' ? init.body : '';
+    let bodyObj: Record<string, unknown> = {};
+    try {
+      bodyObj = JSON.parse(bodyStr) as Record<string, unknown>;
+    } catch {
+      // non-JSON body, skip plugin processing
+    }
+
+    const ctx: PluginContext = {
+      requestId: crypto.randomUUID(),
+      provider: providerName,
+      modelIn: model,
+      modelOut: model,
+      routeType: 'chat-proxy',
+      isStream: bodyObj.stream === true,
+    };
+
+    const result = await executeRequestPlugins(plugins, ctx, url, headers, bodyObj);
+
+    return fetch(result.url, {
+      ...init,
+      headers: result.headers,
+      body: JSON.stringify(result.body),
+      ...(proxyUrl ? { proxy: proxyUrl } : {}),
+      decompress: true,
+    });
+  }) as typeof fetch;
+}
+
 function normalizeChatProxyBaseUrl(
   providerType: AppConfig['providers'][string]['type'],
   base: string
 ): string {
   const normalized = base.replace(/\/+$/, '');
 
-  // AI SDK 的 Anthropic provider 默认按 `${baseURL}/messages` 拼接，
-  // 因此它期望 baseURL 语义接近官方的 `.../v1`。
-  // 现有 local-router 配置里 anthropic provider 的 base 一直是上游根前缀，
-  // 例如 DashScope 使用 `https://dashscope.aliyuncs.com/apps/anthropic`，
-  // 真实请求路径再由路由层补 `/v1/messages`。这里做一次兼容补齐。
-  if (providerType === 'anthropic-messages' && !normalized.endsWith('/v1')) {
+  // AI SDK 各 provider 默认拼接路径：
+  //   Anthropic: `${baseURL}/messages`  → 需要 baseURL 以 /v1 结尾
+  //   OpenAI:    `${baseURL}/chat/completions` → 需要 baseURL 以 /v1 结尾
+  // local-router 配置里 base 通常是上游根前缀（不含 /v1），这里做兼容补齐。
+  if (!normalized.endsWith('/v1')) {
     return `${normalized}/v1`;
   }
 
@@ -245,13 +290,14 @@ function normalizeChatProxyBaseUrl(
 function createChatProxyModel(
   providerName: string,
   providerConfig: AppConfig['providers'][string],
-  model: string
+  model: string,
+  customFetch?: typeof fetch
 ) {
   const common = {
     apiKey: providerConfig.apiKey,
     baseURL: normalizeChatProxyBaseUrl(providerConfig.type, providerConfig.base),
     name: `chat-proxy.${providerName}`,
-    fetch: createUpstreamFetch(providerConfig.proxy),
+    fetch: customFetch,
   };
 
   switch (providerConfig.type) {
@@ -482,8 +528,13 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
     }
 
     try {
+      const plugins = pluginManager.getPlugins(body.provider);
+      const pluginFetch = plugins.length > 0
+        ? createPluginFetch(plugins, body.provider, body.model, providerConfig.proxy)
+        : createUpstreamFetch(providerConfig.proxy);
+
       const result = streamText({
-        model: createChatProxyModel(body.provider, providerConfig, body.model),
+        model: createChatProxyModel(body.provider, providerConfig, body.model, pluginFetch),
         messages: body.messages,
         ...(body.maxOutputTokens ? { maxOutputTokens: body.maxOutputTokens } : {}),
       });
@@ -938,7 +989,7 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
       return c.json(
         {
           error: '请求过于频繁，请稍后再试',
-          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
+          retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000),
         },
         429
       );
@@ -987,10 +1038,11 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
 
       // Deep clone to avoid mutating the shared config object
       const clonedConfig: AppConfig = structuredClone(config);
-      const { config: newConfig, imported, skipped } = mergeImportIntoConfig(
-        clonedConfig,
-        importResult
-      );
+      const {
+        config: newConfig,
+        imported,
+        skipped,
+      } = mergeImportIntoConfig(clonedConfig, importResult);
 
       if (imported.length > 0) {
         store.save(newConfig);

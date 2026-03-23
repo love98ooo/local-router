@@ -53,7 +53,6 @@ export interface UsageMetricsResponse {
     cacheCreationTokens: number;
     cost: number;
     pricing: { input: number; output: number; cacheRead: number; cacheCreation: number } | null;
-    usageAvailable: boolean;
   }>;
   series: Array<{
     ts: string;
@@ -177,7 +176,6 @@ interface ModelAgg {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
-  requestsWithUsage: number;
 }
 
 interface ProviderAgg {
@@ -280,14 +278,13 @@ export async function getUsageMetrics(options: {
         const status = event.upstream_status ?? 0;
         if (status < 200 || status >= 300) continue;
 
-        const rawInput = event.usage_input_tokens;
-        const rawOutput = event.usage_output_tokens;
-        const hasUsage = rawInput !== null || rawOutput !== null;
-
-        const inputTokens = Math.max(0, rawInput ?? 0);
-        const outputTokens = Math.max(0, rawOutput ?? 0);
+        const inputTokens = Math.max(0, event.usage_input_tokens ?? 0);
+        const outputTokens = Math.max(0, event.usage_output_tokens ?? 0);
         const cacheReadTokens = Math.max(0, event.usage_cache_read_tokens ?? 0);
         const cacheCreationTokens = Math.max(0, event.usage_cache_creation_tokens ?? 0);
+
+        // Skip events with no token data
+        if (inputTokens === 0 && outputTokens === 0) continue;
 
         const providerKey = event.provider || 'unknown';
         const modelKey = event.model_out || 'unknown';
@@ -343,14 +340,12 @@ export async function getUsageMetrics(options: {
           outputTokens: 0,
           cacheReadTokens: 0,
           cacheCreationTokens: 0,
-          requestsWithUsage: 0,
         };
         mod.requests += 1;
         mod.inputTokens += inputTokens;
         mod.outputTokens += outputTokens;
         mod.cacheReadTokens += cacheReadTokens;
         mod.cacheCreationTokens += cacheCreationTokens;
-        if (hasUsage) mod.requestsWithUsage += 1;
         modelAgg.set(modelAggKey, mod);
       }
     } catch {
@@ -398,7 +393,6 @@ export async function getUsageMetrics(options: {
               cacheCreation: pricing.cacheCreation,
             }
           : null,
-        usageAvailable: mod.requestsWithUsage > 0,
       };
     })
     .sort((a, b) => b.requests - a.requests);
@@ -427,6 +421,11 @@ export async function getUsageMetrics(options: {
     byModel,
     series,
   };
+
+  // Evict expired entries before writing to prevent unbounded growth
+  for (const [k, v] of usageCache.entries()) {
+    if (v.expiresAt <= nowMs) usageCache.delete(k);
+  }
 
   usageCache.set(cacheKey, {
     expiresAt: nowMs + CACHE_TTL_MS,

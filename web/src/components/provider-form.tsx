@@ -329,6 +329,22 @@ export function ProviderForm({ name, config, isNew, onChange }: ProviderFormProp
         plugins={config.plugins ?? []}
         onChange={(plugins) => onChange({ ...config, plugins: plugins.length > 0 ? plugins : undefined })}
       />
+
+      <Separator />
+
+      <BalanceEditor
+        key={name}
+        balance={config.balance}
+        onChange={(balance) => {
+          const next = { ...config };
+          if (balance) {
+            next.balance = balance;
+          } else {
+            delete next.balance;
+          }
+          onChange(next);
+        }}
+      />
     </div>
   );
 }

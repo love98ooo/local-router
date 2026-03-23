@@ -1,4 +1,13 @@
-import type { AppConfig, BalanceResponse, CCSProviderInfo, ConfigMeta, LogMetricsResponse, LogMetricsWindow, UsageMetricsResponse, UsageMetricsWindow } from '@/types/config';
+import type {
+  AppConfig,
+  BalanceResponse,
+  CCSProviderInfo,
+  ConfigMeta,
+  LogMetricsResponse,
+  LogMetricsWindow,
+  UsageMetricsResponse,
+  UsageMetricsWindow,
+} from '@/types/config';
 import { CryptoClient, type EncryptedPayload } from './crypto';
 
 interface OneShotSession {
@@ -472,6 +481,32 @@ export function openLogTail(
   };
 }
 
+export async function fetchUsageMetrics(
+  window: UsageMetricsWindow = '24h',
+  refresh = false
+): Promise<UsageMetricsResponse> {
+  const params = new URLSearchParams({ window, refresh: refresh ? '1' : '0' });
+  const res = await fetch(`/api/usage?${params.toString()}`);
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `获取用量统计失败: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchProviderBalances(): Promise<BalanceResponse> {
+  const res = await fetch('/api/balance');
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `获取余额失败: ${res.status}`);
+  }
+
+  return res.json();
+}
+
 export async function fetchCCSProviders(
   db?: string
 ): Promise<{ providers: CCSProviderInfo[]; dbExists: boolean }> {
@@ -505,32 +540,6 @@ export async function importCCSProviders(
       throw new Error(`${body.error ?? '请求过于频繁'}，${wait}`);
     }
     throw new Error(body.error ?? `导入 CCS 供应商失败: ${res.status}`);
-  }
-
-  return res.json();
-}
-
-export async function fetchUsageMetrics(
-  window: UsageMetricsWindow = '24h',
-  refresh = false
-): Promise<UsageMetricsResponse> {
-  const params = new URLSearchParams({ window, refresh: refresh ? '1' : '0' });
-  const res = await fetch(`/api/usage?${params.toString()}`);
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? `获取用量统计失败: ${res.status}`);
-  }
-
-  return res.json();
-}
-
-export async function fetchProviderBalances(): Promise<BalanceResponse> {
-  const res = await fetch('/api/balance');
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? `获取余额失败: ${res.status}`);
   }
 
   return res.json();

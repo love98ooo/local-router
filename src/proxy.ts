@@ -4,13 +4,13 @@ import { tmpdir } from 'node:os';
 import type { Context } from 'hono';
 import type { LogEvent, LogMeta } from './logger';
 import { extractProviderRequestId, getLogger, normalizeUrl } from './logger';
+import { extractUsageFromResponse, extractUsageFromStream } from './usage-extract';
 import type { Plugin, PluginContext, PluginPhaseLog } from './plugin';
 import {
   createSSEPluginTransform,
   executeJsonResponsePlugins,
   executeRequestPlugins,
 } from './plugin-engine';
-import { extractUsageFromResponse, extractUsageFromStream } from './usage-extract';
 
 export type { PluginPhaseLog } from './plugin';
 
@@ -382,6 +382,7 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
 
   // 用最终客户端可见的值计算 response_bytes
   const responseBytes = Buffer.byteLength(responseText, 'utf-8');
+  const usage = extractUsageFromResponse(logMeta.routeType, responseText);
 
   const usage = extractUsageFromResponse(logMeta.routeType, responseText);
 
@@ -391,6 +392,10 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
     response_headers: finalResponseHeaders,
     response_bytes: responseBytes,
     provider_request_id: providerRequestId,
+    usage_input_tokens: usage.inputTokens,
+    usage_output_tokens: usage.outputTokens,
+    usage_cache_read_tokens: usage.cacheReadTokens,
+    usage_cache_creation_tokens: usage.cacheCreationTokens,
     ...pluginLogOverrides,
     usage_input_tokens: usage.inputTokens,
     usage_output_tokens: usage.outputTokens,
