@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  Coins,
   Download,
   FileCog,
   FileSearch,
@@ -28,6 +29,7 @@ type NavItem = {
     | "/routes"
     | "/logs"
     | "/sessions"
+    | "/usage"
     | "/logs-settings"
     | "/import-ccs";
   label: string;
@@ -37,6 +39,7 @@ type NavItem = {
 const OBSERVE_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "仪表盘", icon: LayoutDashboard },
   { to: "/chat", label: "聊天面板", icon: MessageSquare },
+  { to: "/usage", label: "用量统计", icon: Coins },
   { to: "/logs", label: "日志检索", icon: FileSearch },
   { to: "/sessions", label: "用户会话", icon: Users },
 ];
