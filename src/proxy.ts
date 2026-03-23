@@ -384,8 +384,6 @@ export async function proxyRequest(c: Context, options: ProxyRequestOptions): Pr
   const responseBytes = Buffer.byteLength(responseText, 'utf-8');
   const usage = extractUsageFromResponse(logMeta.routeType, responseText);
 
-  const usage = extractUsageFromResponse(logMeta.routeType, responseText);
-
   const eventOverrides: Partial<LogEvent> = {
     upstream_status: upstreamRes.status,
     content_type_res: contentTypeRes,
