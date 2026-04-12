@@ -164,7 +164,7 @@ export function LogsPage() {
               <Label>时间窗口</Label>
               <Select
                 value={filters.window}
-                onValueChange={(v) => setFilter('window', v as '1h' | '6h' | '24h')}
+                onValueChange={(v) => setFilter('window', v as '1h' | '6h' | '24h' | '7d' | '30d')}
               >
                 <SelectTrigger className="h-8 w-full">
                   <SelectValue />
@@ -173,6 +173,8 @@ export function LogsPage() {
                   <SelectItem value="1h">最近 1 小时</SelectItem>
                   <SelectItem value="6h">最近 6 小时</SelectItem>
                   <SelectItem value="24h">最近 24 小时</SelectItem>
+                  <SelectItem value="7d">最近 7 天</SelectItem>
+                  <SelectItem value="30d">最近 30 天</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -37,6 +37,8 @@ export function LogDetailPage() {
   const [detail, setDetail] = useState<LogEventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(['overview']));
 
   useEffect(() => {
     let cancelled = false;
@@ -113,8 +115,16 @@ export function LogDetailPage() {
     detail.plugins && (detail.plugins.request?.length || detail.plugins.response?.length)
   );
 
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    setVisitedTabs((prev) => new Set([...prev, value]));
+  };
+
+  // Only render tab content if it has been visited (lazy loading)
+  const shouldRenderTab = (tabValue: string) => visitedTabs.has(tabValue);
+
   return (
-    <Tabs defaultValue="overview" className="space-y-2">
+    <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-2">
       <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-background px-3 py-2">
         <Button
           variant="outline"
@@ -237,59 +247,65 @@ export function LogDetailPage() {
       </TabsContent>
 
       <TabsContent value="request-response" className="mt-0 space-y-4">
-        <RequestResponseFlowSections detail={detail} />
+        {shouldRenderTab('request-response') ? <RequestResponseFlowSections detail={detail} /> : null}
       </TabsContent>
 
       {hasPlugins ? (
         <TabsContent value="plugins" className="mt-0 space-y-4">
-          <PluginPipelineSection detail={detail} />
+          {shouldRenderTab('plugins') ? <PluginPipelineSection detail={detail} /> : null}
         </TabsContent>
       ) : null}
 
       <TabsContent value="session-tracing" className="mt-0 space-y-4">
-        {parsedChatHistory ? <ChatHistoryCard parsed={parsedChatHistory} /> : null}
+        {shouldRenderTab('session-tracing') ? (
+          <>
+            {parsedChatHistory ? <ChatHistoryCard parsed={parsedChatHistory} /> : null}
 
-        <section className="rounded-lg border bg-background">
-          <div className="border-b px-3 py-3">
-            <h3 className="text-base font-semibold">Upstream / Tracing</h3>
-          </div>
-          <div className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            <MetaItem
-              label="provider_request_id"
-              value={detail.upstream.providerRequestId ?? '-'}
-              mono
-            />
-            <MetaItem label="error_type" value={detail.upstream.errorType ?? '-'} mono />
-            <MetaItem label="error_message" value={detail.upstream.errorMessage ?? '-'} />
-            <MetaItem label="is_stream" value={detail.upstream.isStream ? 'true' : 'false'} />
-            <MetaItem
-              label="stream_file"
-              value={detail.upstream.streamFile ?? '无 stream 数据'}
-              mono
-            />
-          </div>
-          <div className="px-3 pb-3">
-            <StreamContentBlock
-              title="stream content"
-              content={detail.upstream.streamContent}
-              emptyText={
-                detail.upstream.isStream ? '未捕获 stream 内容。' : '非流式请求，无 stream 内容。'
-              }
-            />
-          </div>
-        </section>
+            <section className="rounded-lg border bg-background">
+              <div className="border-b px-3 py-3">
+                <h3 className="text-base font-semibold">Upstream / Tracing</h3>
+              </div>
+              <div className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                <MetaItem
+                  label="provider_request_id"
+                  value={detail.upstream.providerRequestId ?? '-'}
+                  mono
+                />
+                <MetaItem label="error_type" value={detail.upstream.errorType ?? '-'} mono />
+                <MetaItem label="error_message" value={detail.upstream.errorMessage ?? '-'} />
+                <MetaItem label="is_stream" value={detail.upstream.isStream ? 'true' : 'false'} />
+                <MetaItem
+                  label="stream_file"
+                  value={detail.upstream.streamFile ?? '无 stream 数据'}
+                  mono
+                />
+              </div>
+              <div className="px-3 pb-3">
+                <StreamContentBlock
+                  title="stream content"
+                  content={detail.upstream.streamContent}
+                  emptyText={
+                    detail.upstream.isStream ? '未捕获 stream 内容。' : '非流式请求，无 stream 内容。'
+                  }
+                />
+              </div>
+            </section>
+          </>
+        ) : null}
       </TabsContent>
 
       <TabsContent value="raw" className="mt-0">
-        <section className="rounded-lg border bg-background">
-          <div className="border-b px-3 py-3">
-            <h3 className="text-base font-semibold">Raw</h3>
-            <p className="text-sm text-muted-foreground">完整事件 JSON</p>
-          </div>
-          <div className="px-3 py-3">
-            <JsonBlock title="event" value={detail.rawEvent} />
-          </div>
-        </section>
+        {shouldRenderTab('raw') ? (
+          <section className="rounded-lg border bg-background">
+            <div className="border-b px-3 py-3">
+              <h3 className="text-base font-semibold">Raw</h3>
+              <p className="text-sm text-muted-foreground">完整事件 JSON</p>
+            </div>
+            <div className="px-3 py-3">
+              <JsonBlock title="event" value={detail.rawEvent} />
+            </div>
+          </section>
+        ) : null}
       </TabsContent>
     </Tabs>
   );

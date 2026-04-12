@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline';
 import type { LogConfig } from './config';
 import { resolveLogBaseDir } from './config';
 
-export type LogMetricsWindow = '1h' | '6h' | '24h';
+export type LogMetricsWindow = '1h' | '6h' | '24h' | '7d' | '30d';
 
 interface LogEventForMetrics {
   ts_start?: string;
@@ -69,12 +69,16 @@ const WINDOW_MS: Record<LogMetricsWindow, number> = {
   '1h': 60 * 60 * 1000,
   '6h': 6 * 60 * 60 * 1000,
   '24h': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
 };
 
 const BUCKET_MS: Record<LogMetricsWindow, number> = {
-  '1h': 5 * 60 * 1000,
-  '6h': 15 * 60 * 1000,
-  '24h': 30 * 60 * 1000,
+  '1h': 5 * 60 * 1000,      // 5 min buckets
+  '6h': 15 * 60 * 1000,     // 15 min buckets
+  '24h': 30 * 60 * 1000,    // 30 min buckets
+  '7d': 2 * 60 * 60 * 1000, // 2 hour buckets
+  '30d': 12 * 60 * 60 * 1000, // 12 hour buckets
 };
 
 const TOP_LIMIT = 5;
@@ -89,7 +93,7 @@ interface CacheEntry {
 const metricsCache = new Map<string, CacheEntry>();
 
 export function isLogMetricsWindow(value: string): value is LogMetricsWindow {
-  return value === '1h' || value === '6h' || value === '24h';
+  return value === '1h' || value === '6h' || value === '24h' || value === '7d' || value === '30d';
 }
 
 function toPercent(numerator: number, denominator: number): number {
