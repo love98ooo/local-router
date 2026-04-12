@@ -39,8 +39,7 @@ import { queryLogSessions } from './log-sessions';
 import { queryLogEventsDuck, getLogEventDetailByIdDuck } from './log-query-duckdb';
 import { getLogMetricsDuck } from './log-metrics-duckdb';
 import { queryLogSessionsDuck } from './log-sessions-duckdb';
-import { getLogMetricsDuck } from './log-metrics-duckdb';
-import { queryLogSessionsDuck } from './log-sessions-duckdb';
+import { getUsageMetricsDuck } from './usage-metrics-duckdb';
 import type { LogConfig } from './config';
 import { getLogStorageInfo, startLogStorageBackgroundTask } from './log-storage';
 import { initLogger, resetLogger } from './logger';
@@ -592,12 +591,20 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
     }
 
     try {
-      const metrics = await getUsageMetrics({
-        config,
-        logConfig: config.log,
-        window,
-        refresh,
-      });
+      const useDuckDb = config.log?.useDuckDbQuery === true;
+      const metrics = useDuckDb
+        ? await getUsageMetricsDuck({
+            config,
+            logConfig: config.log,
+            window,
+            refresh,
+          })
+        : await getUsageMetrics({
+            config,
+            logConfig: config.log,
+            window,
+            refresh,
+          });
       return c.json(metrics);
     } catch (err) {
       return c.json(
