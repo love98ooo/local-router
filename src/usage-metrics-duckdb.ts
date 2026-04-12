@@ -162,15 +162,15 @@ export async function getUsageMetricsDuck(options: {
     const summarySql = `
       SELECT
         COUNT(*)::INTEGER as total_requests,
-        SUM(COALESCE(usage_input_tokens, 0))::BIGINT as total_input_tokens,
-        SUM(COALESCE(usage_output_tokens, 0))::BIGINT as total_output_tokens,
-        SUM(COALESCE(usage_cache_read_tokens, 0))::BIGINT as total_cache_read_tokens,
-        SUM(COALESCE(usage_cache_creation_tokens, 0))::BIGINT as total_cache_creation_tokens
+        SUM(COALESCE(usage_input_tokens::BIGINT, 0))::BIGINT as total_input_tokens,
+        SUM(COALESCE(usage_output_tokens::BIGINT, 0))::BIGINT as total_output_tokens,
+        SUM(COALESCE(usage_cache_read_tokens::BIGINT, 0))::BIGINT as total_cache_read_tokens,
+        SUM(COALESCE(usage_cache_creation_tokens::BIGINT, 0))::BIGINT as total_cache_creation_tokens
       FROM ${viewName}
-      WHERE ts_start >= '${fromIso}' AND ts_start <= '${toIso}'
+      WHERE ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP
         AND error_type IS NULL
         AND upstream_status >= 200 AND upstream_status < 300
-        AND (COALESCE(usage_input_tokens, 0) > 0 OR COALESCE(usage_output_tokens, 0) > 0)
+        AND (COALESCE(usage_input_tokens::BIGINT, 0) > 0 OR COALESCE(usage_output_tokens::BIGINT, 0) > 0)
     `;
 
     // Query time series
@@ -178,13 +178,13 @@ export async function getUsageMetricsDuck(options: {
       SELECT
         time_bucket(INTERVAL '${Math.floor(bucketMs / 1000)} seconds', ts_start::TIMESTAMP) as bucket,
         COUNT(*)::INTEGER as requests,
-        SUM(COALESCE(usage_input_tokens, 0))::BIGINT as input_tokens,
-        SUM(COALESCE(usage_output_tokens, 0))::BIGINT as output_tokens
+        SUM(COALESCE(usage_input_tokens::BIGINT, 0))::BIGINT as input_tokens,
+        SUM(COALESCE(usage_output_tokens::BIGINT, 0))::BIGINT as output_tokens
       FROM ${viewName}
-      WHERE ts_start >= '${fromIso}' AND ts_start <= '${toIso}'
+      WHERE ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP
         AND error_type IS NULL
         AND upstream_status >= 200 AND upstream_status < 300
-        AND (COALESCE(usage_input_tokens, 0) > 0 OR COALESCE(usage_output_tokens, 0) > 0)
+        AND (COALESCE(usage_input_tokens::BIGINT, 0) > 0 OR COALESCE(usage_output_tokens::BIGINT, 0) > 0)
       GROUP BY bucket
       ORDER BY bucket
     `;
@@ -194,15 +194,15 @@ export async function getUsageMetricsDuck(options: {
       SELECT
         COALESCE(provider, 'unknown') as provider_key,
         COUNT(*)::INTEGER as requests,
-        SUM(COALESCE(usage_input_tokens, 0))::BIGINT as input_tokens,
-        SUM(COALESCE(usage_output_tokens, 0))::BIGINT as output_tokens,
-        SUM(COALESCE(usage_cache_read_tokens, 0))::BIGINT as cache_read_tokens,
-        SUM(COALESCE(usage_cache_creation_tokens, 0))::BIGINT as cache_creation_tokens
+        SUM(COALESCE(usage_input_tokens::BIGINT, 0))::BIGINT as input_tokens,
+        SUM(COALESCE(usage_output_tokens::BIGINT, 0))::BIGINT as output_tokens,
+        SUM(COALESCE(usage_cache_read_tokens::BIGINT, 0))::BIGINT as cache_read_tokens,
+        SUM(COALESCE(usage_cache_creation_tokens::BIGINT, 0))::BIGINT as cache_creation_tokens
       FROM ${viewName}
-      WHERE ts_start >= '${fromIso}' AND ts_start <= '${toIso}'
+      WHERE ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP
         AND error_type IS NULL
         AND upstream_status >= 200 AND upstream_status < 300
-        AND (COALESCE(usage_input_tokens, 0) > 0 OR COALESCE(usage_output_tokens, 0) > 0)
+        AND (COALESCE(usage_input_tokens::BIGINT, 0) > 0 OR COALESCE(usage_output_tokens::BIGINT, 0) > 0)
       GROUP BY COALESCE(provider, 'unknown')
       ORDER BY requests DESC
     `;
@@ -213,15 +213,15 @@ export async function getUsageMetricsDuck(options: {
         COALESCE(provider, 'unknown') as provider_key,
         COALESCE(model_out, 'unknown') as model_key,
         COUNT(*)::INTEGER as requests,
-        SUM(COALESCE(usage_input_tokens, 0))::BIGINT as input_tokens,
-        SUM(COALESCE(usage_output_tokens, 0))::BIGINT as output_tokens,
-        SUM(COALESCE(usage_cache_read_tokens, 0))::BIGINT as cache_read_tokens,
-        SUM(COALESCE(usage_cache_creation_tokens, 0))::BIGINT as cache_creation_tokens
+        SUM(COALESCE(usage_input_tokens::BIGINT, 0))::BIGINT as input_tokens,
+        SUM(COALESCE(usage_output_tokens::BIGINT, 0))::BIGINT as output_tokens,
+        SUM(COALESCE(usage_cache_read_tokens::BIGINT, 0))::BIGINT as cache_read_tokens,
+        SUM(COALESCE(usage_cache_creation_tokens::BIGINT, 0))::BIGINT as cache_creation_tokens
       FROM ${viewName}
-      WHERE ts_start >= '${fromIso}' AND ts_start <= '${toIso}'
+      WHERE ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP
         AND error_type IS NULL
         AND upstream_status >= 200 AND upstream_status < 300
-        AND (COALESCE(usage_input_tokens, 0) > 0 OR COALESCE(usage_output_tokens, 0) > 0)
+        AND (COALESCE(usage_input_tokens::BIGINT, 0) > 0 OR COALESCE(usage_output_tokens::BIGINT, 0) > 0)
       GROUP BY COALESCE(provider, 'unknown'), COALESCE(model_out, 'unknown')
       ORDER BY requests DESC
     `;

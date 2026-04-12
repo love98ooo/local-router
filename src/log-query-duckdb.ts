@@ -369,10 +369,10 @@ function mapRowToSummary(row: any, date: string): LogEventSummary {
 function buildSqlFilters(query: LogQueryParams): string {
   const filters: string[] = [];
 
-  // Time range
+  // Time range - cast to TIMESTAMP for proper comparison
   const fromIso = new Date(query.fromMs).toISOString();
   const toIso = new Date(query.toMs).toISOString();
-  filters.push(`ts_start >= '${fromIso}' AND ts_start <= '${toIso}'`);
+  filters.push(`ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP`);
 
   // Levels
   if (query.levels.length > 0) {
@@ -520,7 +520,7 @@ export async function queryLogEventsDuck(
         request_body
       FROM ${viewName}
       WHERE ${sqlFilters}
-      ORDER BY ts_start ${sortDir}, request_id ${sortDir}
+      ORDER BY ts_start::TIMESTAMP ${sortDir}, request_id ${sortDir}
       LIMIT ${query.limit + 1}
       OFFSET ${offset}
     `;

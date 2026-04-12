@@ -219,8 +219,8 @@ export async function queryLogSessionsDuck(
         model_out,
         request_body
       FROM ${viewName}
-      WHERE ts_start >= '${fromIso}' AND ts_start <= '${toIso}'
-      ORDER BY ts_start
+      WHERE ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP
+      ORDER BY ts_start::TIMESTAMP
     `;
 
     const result = await conn.run(sql);
