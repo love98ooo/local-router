@@ -36,12 +36,6 @@ import {
   validateStatusClass,
 } from './log-query';
 import { queryLogSessions } from './log-sessions';
-import { queryLogEventsDuck, getLogEventDetailByIdDuck } from './log-query-duckdb';
-import { getLogMetricsDuck } from './log-metrics-duckdb';
-import { queryLogSessionsDuck } from './log-sessions-duckdb';
-import { getLogMetricsDuck } from './log-metrics-duckdb';
-import { queryLogSessionsDuck } from './log-sessions-duckdb';
-import type { LogConfig } from './config';
 import { getLogStorageInfo, startLogStorageBackgroundTask } from './log-storage';
 import { initLogger, resetLogger } from './logger';
 import { openAPISpec } from './openapi';
@@ -569,10 +563,11 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
     }
 
     try {
-      const useDuckDb = config.log?.useDuckDbQuery === true;
-      const metrics = useDuckDb
-        ? await getLogMetricsDuck({ logConfig: config.log, window, refresh })
-        : await getLogMetrics({ logConfig: config.log, window, refresh });
+      const metrics = await getLogMetrics({
+        logConfig: config.log,
+        window,
+        refresh,
+      });
       return c.json(metrics);
     } catch (err) {
       return c.json(
@@ -672,48 +667,26 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
       const limitRaw = c.req.query('limit');
       const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
 
-      const useDuckDb = config.log?.useDuckDbQuery === true;
-      const data = useDuckDb
-        ? await queryLogEventsDuck(
-            { logConfig: config.log },
-            {
-              ...range,
-              levels,
-              providers: parseCommaSeparated(c.req.query('provider')),
-              routeTypes: parseCommaSeparated(c.req.query('routeType')),
-              models: parseCommaSeparated(c.req.query('model')),
-              modelIns: parseCommaSeparated(c.req.query('modelIn')),
-              modelOuts: parseCommaSeparated(c.req.query('modelOut')),
-              users: parseCommaSeparated(c.req.query('user')),
-              sessions: parseCommaSeparated(c.req.query('session')),
-              statusClasses,
-              hasError,
-              q: c.req.query('q') ?? '',
-              sort: sortRaw,
-              limit,
-              cursor: c.req.query('cursor') ?? null,
-            }
-          )
-        : await queryLogEvents(
-            { logConfig: config.log },
-            {
-              ...range,
-              levels,
-              providers: parseCommaSeparated(c.req.query('provider')),
-              routeTypes: parseCommaSeparated(c.req.query('routeType')),
-              models: parseCommaSeparated(c.req.query('model')),
-              modelIns: parseCommaSeparated(c.req.query('modelIn')),
-              modelOuts: parseCommaSeparated(c.req.query('modelOut')),
-              users: parseCommaSeparated(c.req.query('user')),
-              sessions: parseCommaSeparated(c.req.query('session')),
-              statusClasses,
-              hasError,
-              q: c.req.query('q') ?? '',
-              sort: sortRaw,
-              limit,
-              cursor: c.req.query('cursor') ?? null,
-            }
-          );
+      const data = await queryLogEvents(
+        { logConfig: config.log },
+        {
+          ...range,
+          levels,
+          providers: parseCommaSeparated(c.req.query('provider')),
+          routeTypes: parseCommaSeparated(c.req.query('routeType')),
+          models: parseCommaSeparated(c.req.query('model')),
+          modelIns: parseCommaSeparated(c.req.query('modelIn')),
+          modelOuts: parseCommaSeparated(c.req.query('modelOut')),
+          users: parseCommaSeparated(c.req.query('user')),
+          sessions: parseCommaSeparated(c.req.query('session')),
+          statusClasses,
+          hasError,
+          q: c.req.query('q') ?? '',
+          sort: sortRaw,
+          limit,
+          cursor: c.req.query('cursor') ?? null,
+        }
+      );
 
       return c.json(data);
     } catch (err) {
@@ -739,26 +712,15 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
         to: c.req.query('to'),
       });
 
-      const useDuckDb = config.log?.useDuckDbQuery === true;
-      const data = useDuckDb
-        ? await queryLogSessionsDuck(
-            { logConfig: config.log },
-            {
-              ...range,
-              users: parseCommaSeparated(c.req.query('user')),
-              sessions: parseCommaSeparated(c.req.query('session')),
-              q: c.req.query('q') ?? '',
-            }
-          )
-        : await queryLogSessions(
-            { logConfig: config.log },
-            {
-              ...range,
-              users: parseCommaSeparated(c.req.query('user')),
-              sessions: parseCommaSeparated(c.req.query('session')),
-              q: c.req.query('q') ?? '',
-            }
-          );
+      const data = await queryLogSessions(
+        { logConfig: config.log },
+        {
+          ...range,
+          users: parseCommaSeparated(c.req.query('user')),
+          sessions: parseCommaSeparated(c.req.query('session')),
+          q: c.req.query('q') ?? '',
+        }
+      );
 
       return c.json(data);
     } catch (err) {
@@ -773,10 +735,7 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
     const config = store.get();
 
     try {
-      const useDuckDb = config.log?.useDuckDbQuery === true;
-      const detail = useDuckDb
-        ? await getLogEventDetailByIdDuck({ logConfig: config.log }, c.req.param('id'))
-        : await getLogEventDetailById({ logConfig: config.log }, c.req.param('id'));
+      const detail = await getLogEventDetailById({ logConfig: config.log }, c.req.param('id'));
       if (!detail) {
         return c.json({ error: '日志事件不存在' }, 404);
       }
@@ -926,33 +885,31 @@ function createAdminApiRoutes(store: ConfigStore, pluginManager: PluginManager, 
 
         push('ready', { ok: true, now: new Date().toISOString() });
 
-        const useDuckDb = config.log?.useDuckDbQuery === true;
-
         timer = setInterval(async () => {
           if (closed) return;
 
           try {
             const toMs = Date.now();
-            const queryParams = {
-              fromMs: Math.max(lastSeenTs, toMs - 60 * 60 * 1000),
-              toMs,
-              levels,
-              providers: parseCommaSeparated(c.req.query('provider')),
-              routeTypes: parseCommaSeparated(c.req.query('routeType')),
-              models: parseCommaSeparated(c.req.query('model')),
-              modelIns: parseCommaSeparated(c.req.query('modelIn')),
-              modelOuts: parseCommaSeparated(c.req.query('modelOut')),
-              users: parseCommaSeparated(c.req.query('user')),
-              sessions: parseCommaSeparated(c.req.query('session')),
-              statusClasses,
-              hasError,
-              q: c.req.query('q') ?? '',
-              sort: sortRaw,
-              limit: 100,
-            };
-            const data = useDuckDb
-              ? await queryLogEventsDuck({ logConfig: config.log }, queryParams)
-              : await queryLogEvents({ logConfig: config.log }, queryParams);
+            const data = await queryLogEvents(
+              { logConfig: config.log },
+              {
+                fromMs: Math.max(lastSeenTs, toMs - 60 * 60 * 1000),
+                toMs,
+                levels,
+                providers: parseCommaSeparated(c.req.query('provider')),
+                routeTypes: parseCommaSeparated(c.req.query('routeType')),
+                models: parseCommaSeparated(c.req.query('model')),
+                modelIns: parseCommaSeparated(c.req.query('modelIn')),
+                modelOuts: parseCommaSeparated(c.req.query('modelOut')),
+                users: parseCommaSeparated(c.req.query('user')),
+                sessions: parseCommaSeparated(c.req.query('session')),
+                statusClasses,
+                hasError,
+                q: c.req.query('q') ?? '',
+                sort: sortRaw,
+                limit: 100,
+              }
+            );
 
             if (closed) return;
 

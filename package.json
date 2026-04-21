@@ -49,7 +49,6 @@
     "check:fix": "biome check --write ."
   },
   "dependencies": {
-    "@duckdb/node-api": "^1.5.1-r.1",
     "@hono/swagger-ui": "^0.5.3",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",

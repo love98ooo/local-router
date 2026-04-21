@@ -121,8 +121,6 @@ export interface LogConfig {
     maxBytesPerRequest?: number;
   };
   bodyPolicy?: 'off' | 'masked' | 'full';
-  /** Use DuckDB for log queries (experimental, faster for large datasets) */
-  useDuckDbQuery?: boolean;
 }
 
 export interface AppConfig {

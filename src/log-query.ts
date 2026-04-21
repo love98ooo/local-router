@@ -6,7 +6,7 @@ import { resolveLogBaseDir } from './config';
 import { resolveLogSessionIdentity } from './log-session-identity';
 import type { LogEvent } from './logger';
 
-export type LogQueryWindow = '1h' | '6h' | '24h' | '7d' | '30d';
+export type LogQueryWindow = '1h' | '6h' | '24h';
 export type LogSort = 'time_desc' | 'time_asc';
 export type LogLevel = 'info' | 'error';
 export type StatusClass = '2xx' | '4xx' | '5xx' | 'network_error';
@@ -15,8 +15,6 @@ const WINDOW_MS: Record<LogQueryWindow, number> = {
   '1h': 60 * 60 * 1000,
   '6h': 6 * 60 * 60 * 1000,
   '24h': 24 * 60 * 60 * 1000,
-  '7d': 7 * 24 * 60 * 60 * 1000,
-  '30d': 30 * 24 * 60 * 60 * 1000,
 };
 
 const MAX_LINES_SCANNED = 250_000;
@@ -199,11 +197,11 @@ function decodeBase64Url(value: string): string {
   return Buffer.from(value, 'base64url').toString('utf-8');
 }
 
-export function encodeCursor(data: CursorData): string {
+function encodeCursor(data: CursorData): string {
   return encodeBase64Url(JSON.stringify(data));
 }
 
-export function decodeCursor(raw: string): CursorData {
+function decodeCursor(raw: string): CursorData {
   const parsed = JSON.parse(decodeBase64Url(raw)) as CursorData;
   if (!Number.isInteger(parsed.offset) || parsed.offset < 0) {
     throw new Error('cursor 非法');
@@ -233,7 +231,7 @@ function toDayStart(ms: number): number {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
-export function listDateStrings(fromMs: number, toMs: number): string[] {
+function listDateStrings(fromMs: number, toMs: number): string[] {
   const result: string[] = [];
   for (let day = toDayStart(fromMs); day <= toDayStart(toMs); day += 24 * 60 * 60 * 1000) {
     result.push(new Date(day).toISOString().slice(0, 10));
@@ -385,7 +383,7 @@ function clampLimit(limit?: number): number {
   return Math.min(MAX_QUERY_LIMIT, integer);
 }
 
-export function normalizeQuery(input: NormalizedLogQueryInput): LogQueryParams {
+function normalizeQuery(input: NormalizedLogQueryInput): LogQueryParams {
   const sort = input.sort ?? 'time_desc';
   const limit = clampLimit(input.limit);
   const qRaw = (input.q ?? '').trim();
@@ -758,7 +756,7 @@ async function scanEvents(
 }
 
 export function isLogQueryWindow(value: string): value is LogQueryWindow {
-  return value === '1h' || value === '6h' || value === '24h' || value === '7d' || value === '30d';
+  return value === '1h' || value === '6h' || value === '24h';
 }
 
 export function resolveLogQueryRange(input: {
