@@ -312,7 +312,7 @@ export interface LogEventDetail {
 }
 
 export interface FetchLogEventsParams {
-  window?: '1h' | '6h' | '24h' | '7d' | '30d';
+  window?: '1h' | '6h' | '24h';
   from?: string;
   to?: string;
   levels?: Array<'info' | 'error'>;

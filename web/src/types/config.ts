@@ -66,7 +66,7 @@ export interface ConfigMeta {
   routeTypes: string[];
 }
 
-export type LogMetricsWindow = '1h' | '6h' | '24h' | '7d' | '30d';
+export type LogMetricsWindow = '1h' | '6h' | '24h';
 
 export interface LogMetricsSeriesPoint {
   ts: string;
@@ -119,7 +119,7 @@ export interface CCSProviderInfo {
   alreadyImported: boolean;
 }
 
-export type UsageMetricsWindow = '1h' | '6h' | '24h' | '7d' | '30d';
+export type UsageMetricsWindow = '1h' | '6h' | '24h';
 
 export interface UsageMetricsResponse {
   window: string;
