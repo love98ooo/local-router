@@ -200,7 +200,7 @@ export async function getLogMetricsDuck(options: {
         SUM(CASE WHEN upstream_status >= 500 AND error_type IS NULL THEN 1 ELSE 0 END)::INTEGER as count_5xx,
         SUM(CASE WHEN error_type IS NOT NULL THEN 1 ELSE 0 END)::INTEGER as count_network_error
       FROM ${viewName}
-      WHERE ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP
+      WHERE ts_start >= '${fromIso}' AND ts_start <= '${toIso}'
     `;
 
     // Query time series
@@ -211,7 +211,7 @@ export async function getLogMetricsDuck(options: {
         SUM(CASE WHEN error_type IS NOT NULL OR upstream_status < 200 OR upstream_status >= 400 THEN 1 ELSE 0 END)::INTEGER as errors,
         AVG(latency_ms) as avg_latency
       FROM ${viewName}
-      WHERE ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP
+      WHERE ts_start >= '${fromIso}' AND ts_start <= '${toIso}'
       GROUP BY bucket
       ORDER BY bucket
     `;
@@ -224,7 +224,7 @@ export async function getLogMetricsDuck(options: {
         SUM(CASE WHEN error_type IS NOT NULL OR upstream_status < 200 OR upstream_status >= 400 THEN 1 ELSE 0 END)::INTEGER as errors,
         AVG(latency_ms) as avg_latency
       FROM ${viewName}
-      WHERE ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP
+      WHERE ts_start >= '${fromIso}' AND ts_start <= '${toIso}'
       GROUP BY COALESCE(provider, 'unknown')
       ORDER BY requests DESC
       LIMIT ${TOP_LIMIT}
@@ -237,7 +237,7 @@ export async function getLogMetricsDuck(options: {
         COUNT(*)::INTEGER as requests,
         SUM(CASE WHEN error_type IS NOT NULL OR upstream_status < 200 OR upstream_status >= 400 THEN 1 ELSE 0 END)::INTEGER as errors
       FROM ${viewName}
-      WHERE ts_start::TIMESTAMP >= '${fromIso}'::TIMESTAMP AND ts_start::TIMESTAMP <= '${toIso}'::TIMESTAMP
+      WHERE ts_start >= '${fromIso}' AND ts_start <= '${toIso}'
       GROUP BY COALESCE(route_type, 'unknown')
       ORDER BY requests DESC
       LIMIT ${TOP_LIMIT}
